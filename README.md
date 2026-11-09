@@ -61,6 +61,26 @@ This repository deploys all cluster-wide backend services on an existing Kuberne
 
 See [BOOTSTRAP.md](./docs/BOOTSTRAP.md) for detailed bootstrap instructions.
 
+## Direct Helmfile Deployment (Without ArgoCD)
+
+If you prefer to deploy without ArgoCD, use Helmfile directly:
+
+```bash
+# Dry-run to preview changes
+helmfile -e prod template
+
+# Apply to cluster
+helmfile -e prod apply
+
+# Or render and apply with kubectl
+helmfile -e prod template | kubectl apply -f -
+
+# Sync with dependencies and hooks
+helmfile -e prod sync
+```
+
+**Note**: Direct Helmfile deployment doesn't provide ArgoCD features like auto-sync, drift detection, or rollback. See [BOOTSTRAP.md](./docs/BOOTSTRAP.md) for the recommended GitOps approach using ArgoCD.
+
 ## Architecture
 
 ### Design Pattern: App of Apps
@@ -204,7 +224,22 @@ helmfile -e prod template | kubeconform -strict
 yamllint releases/*.yaml.gotmpl
 ```
 
-### Deploy Changes
+### Deploy All Services (via Helmfile)
+
+To deploy all cluster services directly using Helmfile:
+
+```bash
+# For development environment
+helmfile -e dev template | kubectl apply -f -
+
+# For staging environment
+helmfile -e staging template | kubectl apply -f -
+
+# For production environment
+helmfile -e prod template | kubectl apply -f -
+```
+
+### Deploy Changes (via ArgoCD - Recommended)
 
 1. **Edit release or values**
 2. **Commit to git**:
@@ -213,8 +248,10 @@ yamllint releases/*.yaml.gotmpl
    git commit -m "Update Prometheus retention"
    git push origin master
    ```
-3. **ArgoCD auto-syncs** within 3 minutes
-4. **Monitor in ArgoCD UI**: https://argo-cd.cluster.domain
+3. **ArgoCD auto-syncs** within 3 minutes (or manually sync via UI)
+4. **Monitor in ArgoCD UI**: https://argo-cd.{clusterName}.{domain}
+
+**Recommended**: Use ArgoCD for automatic syncing, drift detection, and rollback capabilities.
 
 ### Manage Vault Secrets
 

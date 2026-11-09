@@ -1,0 +1,17 @@
+releases:
+  - name: cloudflare-tunnel-ingress-controller
+    namespace: cloudflare
+    forceNamespace: cloudflare
+    chart: strrl.dev/cloudflare-tunnel-ingress-controller
+    version: 0.0.21
+    values:
+      - cloudflare:
+          apiToken: {{ .Values.cloudflare.apitoken }}
+          accountId: {{ .Values.cloudflare.accountid }}
+          tunnelName: {{ .Values.clusterName }}
+        replicaCount: {{ .Values.ingressController.replicaCount }}
+        cloudflared:
+          replicaCount: {{ .Values.ingressController.cloudflared.replicaCount }}
+          protocol: {{ .Values.ingressController.cloudflared.protocol }}
+        cloudflaredServiceMonitor:
+          create: true

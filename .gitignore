@@ -1,0 +1,30 @@
+# Claude Code
+.claude/
+
+# Helm
+*.lock
+charts/
+Chart.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Helmfile
+/helmfile.state.json
+
+# Temporary files
+/tmp/
+*.tmp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test output
+test-results/
+coverage/

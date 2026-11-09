@@ -1,0 +1,157 @@
+releases:
+  - name: argo-cd
+    namespace: argo-cd
+    forceNamespace: argo-cd
+    chart: argoproj/argo-cd
+    version: 8.2.5
+    values:
+      - global:
+          logging:
+            level: info
+          domain: argo-cd.{{ .Values.clusterName }}.{{ .Values.domain }}
+        notifications:
+          enabled: {{ .Values.argocd.notifications.enabled }}
+          argocdUrl: https://argo-cd.{{ .Values.clusterName }}.{{ .Values.domain }}
+          templates:
+            service.webhook.slack: |
+              url: {{ .Values.slack.argocdWebhook }}
+              headers:
+                - name: Content-Type
+                  value: application/json
+            template.app-out-of-sync: |
+              webhook:
+                slack:
+                  method: POST
+                  body: |
+                    {
+                      "text": "🔄 Application Out of Sync - {{ .Values.clusterName }}",
+                      "attachments": [
+                        {
+                          "color": "warning",
+                          "fields": [
+                            {
+                              "title": "Application",
+                              "value": "{{ `{{.app.metadata.name}}` }}",
+                              "short": true
+                            },
+                            {
+                              "title": "Namespace",
+                              "value": "{{ `{{.app.metadata.namespace}}` }}",
+                              "short": true
+                            },
+                            {
+                              "title": "Sync Status",
+                              "value": "{{ `{{.app.status.sync.status}}` }}",
+                              "short": true
+                            },
+                            {
+                              "title": "Health Status",
+                              "value": "{{ `{{.app.status.health.status}}` }}",
+                              "short": true
+                            },
+                            {
+                              "title": "Repository",
+                              "value": "{{ `{{.app.spec.source.repoURL}}` }}",
+                              "short": false
+                            },
+                            {
+                              "title": "Revision",
+                              "value": "{{ `{{.app.status.sync.revision}}` }}",
+                              "short": true
+                            },
+                            {
+                              "title": "Argo CD Link",
+                              "value": "<https://argo-cd.{{ .Values.clusterName }}.{{ .Values.domain }}/applications/{{ `{{.app.metadata.namespace}}` }}/{{ `{{.app.metadata.name}}` }}|View in Argo CD>",
+                              "short": false
+                            }
+                          ]
+                        }
+                      ]
+                    }
+          triggers:
+            trigger.on-out-of-sync: |
+              - description: Application is out of sync
+                oncePer: app.metadata.name + "." + app.status.sync.status
+                send:
+                  - app-out-of-sync
+                when: app.status.sync.status == "OutOfSync"
+        configs:
+          secret:
+            argocdServerAdminPassword: {{ .Values.argocd.adminpasswordhashed }}
+            argocdServerAdminPasswordMtime: "2024-01-01T00:00:00Z"
+          repositories:
+            - url: https://github.com/blessnetwork/gitops-{{ .Values.clusterName }}.git
+              name: gitops-{{ .Values.clusterName }}
+              project: default
+              type: git
+              username: git
+              password: {{ .Values.github.accesstoken }}
+            - url: https://github.com/blessnetwork/helm-charts.git
+              name: helm-charts
+              project: default
+              type: git
+              username: git
+              password: {{ .Values.github.accesstoken }}
+          params:
+            server:
+              insecure: true
+        server:
+          extraArgs:
+            - --insecure
+          ingress:
+            enabled: true
+            ingressClassName: cloudflare-tunnel
+            hostname: argo-cd.{{ .Values.clusterName }}.{{ .Values.domain }}
+            annotations:
+              nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+              nginx.ingress.kubernetes.io/ssl-redirect: "false"
+        repoServer:
+          extraArgs:
+            - --parallelismlimit=10
+          extraContainers:
+            - name: helmfile-cmp
+              image: travisghansen/argo-cd-helmfile:latest
+              command: ["/var/run/argocd/argocd-cmp-server"]
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 999
+              env:
+                - name: HELMFILE_EXPERIMENTAL
+                  value: "true"
+                - name: OP_SERVICE_ACCOUNT_TOKEN
+                  value: {{ .Values.onepassword.apitoken }}
+                - name: GITHUB_TOKEN
+                  value: {{ .Values.github.accesstoken }}
+                - name: HELMFILE_CACHE_CLEANUP
+                  value: "true"
+              volumeMounts:
+                - name: var-files
+                  mountPath: /var/run/argocd
+                - name: plugins
+                  mountPath: /home/argocd/cmp-server/plugins
+                - name: tmp
+                  mountPath: /tmp
+
+  - name: argo-cd-apps-monitor
+    namespace: argo-cd
+    chart: argoproj/argocd-apps
+    values:
+      - applications:
+          argo-cd-apps-monitor:
+            namespace: argo-cd
+            project: default
+            source:
+              repoURL: https://github.com/blessnetwork/gitops-{{ .Values.clusterName }}.git
+              targetRevision: main
+              path: .
+              directory:
+                recurse: true
+                include: "{application.yaml,applicationset.yaml,*/application.yaml,*/applicationset.yaml}"
+            destination:
+              server: https://kubernetes.default.svc
+              namespace: argo-cd
+            syncPolicy:
+              syncOptions:
+                - CreateNamespace=true
+            annotations:
+              argocd.argoproj.io/sync-wave: "1"

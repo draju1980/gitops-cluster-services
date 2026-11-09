@@ -1,0 +1,40 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: networking
+  namespace: argocd
+spec:
+  description: "Networking services - Cloudflare, Ingress, DNS"
+  sourceRepos:
+    - "https://github.com/draju1980/gitops-cluster-services.git"
+    - "https://github.com/blessnetwork/helm-charts.git"
+    - "https://helm.strrl.dev"
+    - "https://charts.bitnami.com/bitnami"
+  destinations:
+    - namespace: "cloudflare"
+      server: "https://kubernetes.default.svc"
+    - namespace: "external-dns"
+      server: "https://kubernetes.default.svc"
+  clusterResourceWhitelist:
+    - group: ""
+      kind: "Namespace"
+    - group: "rbac.authorization.k8s.io"
+      kind: "ClusterRole"
+    - group: "rbac.authorization.k8s.io"
+      kind: "ClusterRoleBinding"
+    - group: "networking.k8s.io"
+      kind: "NetworkPolicy"
+    - group: "networking.k8s.io"
+      kind: "Ingress"
+    - group: "networking.k8s.io"
+      kind: "IngressClass"
+  namespaceResourceBlacklist:
+    - group: ""
+      kind: "ResourceQuota"
+    - group: ""
+      kind: "LimitRange"
+  orphanedResources:
+    warn: true
+  syncPolicy:
+    allow:
+      unauthenticatedUser: false

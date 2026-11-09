@@ -1,0 +1,29 @@
+releases:
+  - name: namespaces
+    chart: "git::https://git:{{ .Values.github.accesstoken }}@github.com/blessnetwork/helm-charts.git@raw?ref=main"
+    values:
+      - resources:
+          - apiVersion: v1
+            kind: Namespace
+            metadata:
+              name: monitoring
+          - apiVersion: v1
+            kind: Namespace
+            metadata:
+              name: argo-cd
+          - apiVersion: v1
+            kind: Namespace
+            metadata:
+              name: cloudflare
+          - apiVersion: v1
+            kind: Namespace
+            metadata:
+              name: vault
+          - apiVersion: v1
+            kind: Namespace
+            metadata:
+              name: external-secrets
+          - apiVersion: v1
+            kind: Namespace
+            metadata:
+              name: external-dns

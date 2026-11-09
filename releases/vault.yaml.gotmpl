@@ -1,0 +1,170 @@
+releases:
+  - name: external-secrets-crds
+    namespace: external-secrets
+    forceNamespace: external-secrets
+    chart: external-secrets/external-secrets
+    version: 0.9.9
+    values:
+      - installCRDs: true
+    hooks:
+      - events: ["presync"]
+        showlogs: true
+        command: sh
+        args: ["-c", "kubectl apply --server-side -f <(helm template external-secrets external-secrets/external-secrets --include-crds --set installCRDs=true) 2>/dev/null || true"]
+
+  - name: external-secrets
+    namespace: external-secrets
+    forceNamespace: external-secrets
+    chart: external-secrets/external-secrets
+    version: 0.9.9
+    values:
+      - installCRDs: false
+        serviceAccount:
+          create: true
+          name: external-secrets
+        webhook:
+          enabled: true
+          port: 10250
+        certController:
+          enabled: true
+        resources:
+          limits:
+            cpu: 100m
+            memory: 128Mi
+          requests:
+            cpu: 10m
+            memory: 64Mi
+
+  - name: vault
+    namespace: vault
+    forceNamespace: vault
+    chart: hashicorp/vault
+    version: 0.28.1
+    values:
+      - global:
+          enabled: true
+          tlsDisable: true
+        server:
+          replicas: {{ .Values.vault.replicas | default 1 }}
+          dataStorage:
+            enabled: true
+            size: {{ .Values.vault.storageSize | default "10Gi" }}
+            storageClass: "do-block-storage"
+          auditStorage:
+            enabled: true
+            size: {{ .Values.vault.auditStorageSize | default "10Gi" }}
+            storageClass: "do-block-storage"
+          ha:
+            enabled: {{ .Values.vault.haEnabled | default true }}
+            replicas: {{ .Values.vault.replicas | default 1 }}
+            raft:
+              enabled: {{ .Values.vault.raftEnabled | default true }}
+              setNodeId: true
+              config: |
+                ui = true
+                listener "tcp" {
+                  tls_disable = true
+                  address       = "0.0.0.0:8200"
+                  forwarded_for_header = "X-Forwarded-For"
+                  x_forwarded_for_authorized_addrs = "0.0.0.0/0"
+                }
+                storage "raft" {
+                  path = "/vault/data"
+                  node_id = "{{ `{{ env \"HOSTNAME\" }}` }}"
+                }
+                service_registration "kubernetes" {}
+                telemetry {
+                  prometheus_retention_time = "30s"
+                  disable_hostname = true
+                }
+          standalone:
+            enabled: {{ .Values.vault.standaloneEnabled | default false }}
+            config: |
+              ui = true
+              listener "tcp" {
+                tls_disable = true
+                address     = "0.0.0.0:8200"
+              }
+              storage "file" {
+                path = "/vault/data"
+              }
+              telemetry {
+                prometheus_retention_time = "30s"
+                disable_hostname = true
+              }
+          postStart:
+            - /bin/sh
+            - -c
+            - |
+              if [ "{{ `{{ env \"VAULT_ADDR\" }}` }}" = "http://127.0.0.1:8200" ]; then
+                vault login -method=kubernetes -path=auth/kubernetes
+              fi
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          affinity: |
+            podAntiAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  podAffinityTerm:
+                    labelSelector:
+                      matchExpressions:
+                        - key: app.kubernetes.io/name
+                          operator: In
+                          values:
+                            - vault
+                    topologyKey: kubernetes.io/hostname
+        ui:
+          enabled: true
+        csi:
+          enabled: false
+        injector:
+          enabled: true
+          logLevel: info
+          replicas: 1
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "128Mi"
+              cpu: "250m"
+
+  - name: vault-auth-config
+    namespace: vault
+    forceNamespace: vault
+    chart: "git::https://git:{{ .Values.github.accesstoken }}@github.com/blessnetwork/helm-charts.git@raw?ref=main"
+    needs:
+      - vault/vault
+    values:
+      - resources:
+          - apiVersion: v1
+            kind: ConfigMap
+            metadata:
+              name: vault-auth-setup
+              namespace: vault
+            data:
+              enable-auth.sh: |
+                #!/bin/bash
+                set -e
+
+                echo "Waiting for Vault to be ready..."
+                until vault status &>/dev/null; do
+                  echo "Vault not ready, retrying..."
+                  sleep 5
+                done
+
+                echo "Enabling Kubernetes auth method..."
+                vault auth enable kubernetes || echo "Kubernetes auth already enabled"
+
+                echo "Configuring Kubernetes auth..."
+                vault write auth/kubernetes/config \
+                  kubernetes_host="https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_SERVICE_PORT" \
+                  kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+                  token_reviewer_jwt=@/var/run/secrets/kubernetes.io/serviceaccount/token
+
+                echo "Kubernetes auth configured successfully"

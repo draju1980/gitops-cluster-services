@@ -1,0 +1,177 @@
+repositories:
+- name: prometheus-community
+  url: https://prometheus-community.github.io/helm-charts
+- name: argoproj
+  url: https://argoproj.github.io/argo-helm
+- name: strrl.dev
+  url: https://helm.strrl.dev
+- name: grafana
+  url: https://grafana.github.io/helm-charts
+- name: metrics-server
+  url: https://kubernetes-sigs.github.io/metrics-server/
+- name: bitnami
+  url: https://charts.bitnami.com/bitnami
+- name: hashicorp
+  url: https://helm.releases.hashicorp.com
+- name: external-secrets
+  url: https://charts.external-secrets.io
+- name: kyverno
+  url: https://kyverno.github.io/kyverno/
+- name: falcosecurity
+  url: https://falcosecurity.github.io/charts
+- name: aquasecurity
+  url: https://aquasecurity.github.io/helm-charts/
+
+---
+environments:
+  dev:
+    values:
+      - clusterName: dev
+        domain: bls.dev
+        environment: dev
+        argocd:
+          adminpasswordhashed: "$2a$10$R9h7cIPooruNMMwq.L7KqOOtV27x8BwwfHuPVnKfKWGz/BnQuZ8eC"
+          notifications:
+            enabled: false
+        github:
+          accesstoken: "changeme"
+        cloudflare:
+          apitoken: "changeme"
+          accountid: "changeme"
+        cloudflared:
+          replicaCount: 1
+        grafana:
+          adminpassword: "changeme"
+        # Observability storage (local volumes by default)
+        prometheus:
+          retention: "24h"
+          storageSize: "10Gi"
+        loki:
+          retention_period: "24h"
+          storageSize: "10Gi"
+        tempo:
+          replicas: 1
+          storageSize: "10Gi"
+        # Optional: S3 storage (uncomment and configure if needed)
+        # s3:
+        #   accesskey: "changeme"
+        #   secretkey: "changeme"
+        #   region: "nyc3"
+        #   endpoint: "s3.amazonaws.com"
+
+  staging:
+    values:
+      - clusterName: staging
+        domain: bls.dev
+        environment: staging
+        argocd:
+          adminpasswordhashed: "$2a$10$R9h7cIPooruNMMwq.L7KqOOtV27x8BwwfHuPVnKfKWGz/BnQuZ8eC"
+          notifications:
+            enabled: true
+        github:
+          accesstoken: "changeme"
+        cloudflare:
+          apitoken: "changeme"
+          accountid: "changeme"
+        cloudflared:
+          replicaCount: 2
+        grafana:
+          adminpassword: "changeme"
+        loki:
+          region: "nyc3"
+          accesskey: "changeme"
+          secretkey: "changeme"
+          retention_period: 72h
+        thanos:
+          region: "nyc3"
+          accesskey: "changeme"
+          secretkey: "changeme"
+          retentionResolutionRaw: 3d
+          retentionResolution5m: 30d
+          retentionResolution1h: 90d
+
+  prod:
+    values:
+      - clusterName: prod
+        domain: bls.dev
+        environment: prod
+        argocd:
+          adminpasswordhashed: "$2a$10$R9h7cIPooruNMMwq.L7KqOOtV27x8BwwfHuPVnKfKWGz/BnQuZ8eC"
+          notifications:
+            enabled: true
+        github:
+          accesstoken: "changeme"
+        cloudflare:
+          apitoken: "changeme"
+          accountid: "changeme"
+        cloudflared:
+          replicaCount: 3
+        grafana:
+          adminpassword: "changeme"
+        loki:
+          region: "nyc3"
+          accesskey: "changeme"
+          secretkey: "changeme"
+          retention_period: 720h
+        thanos:
+          region: "nyc3"
+          accesskey: "changeme"
+          secretkey: "changeme"
+          retentionResolutionRaw: 3d
+          retentionResolution5m: 30d
+          retentionResolution1h: 90d
+
+  default:
+    values:
+      - clusterName: dev
+        domain: bls.dev
+        environment: dev
+        argocd:
+          adminpasswordhashed: "$2a$10$R9h7cIPooruNMMwq.L7KqOOtV27x8BwwfHuPVnKfKWGz/BnQuZ8eC"
+          notifications:
+            enabled: false
+        github:
+          accesstoken: "changeme"
+        cloudflare:
+          apitoken: "changeme"
+          accountid: "changeme"
+        cloudflared:
+          replicaCount: 1
+        grafana:
+          adminpassword: "changeme"
+        # Observability storage (local volumes by default)
+        prometheus:
+          retention: "24h"
+          storageSize: "10Gi"
+        loki:
+          retention_period: "24h"
+          storageSize: "10Gi"
+        tempo:
+          replicas: 1
+          storageSize: "10Gi"
+        # Optional: S3 storage (uncomment and configure if needed)
+        # s3:
+        #   accesskey: "changeme"
+        #   secretkey: "changeme"
+        #   region: "nyc3"
+        #   endpoint: "s3.amazonaws.com"
+---
+helmfiles:
+  - path: releases/namespaces.yaml.gotmpl
+    values:
+      - {{ .Values | toYaml | nindent 8 }}
+  - path: releases/vault.yaml.gotmpl
+    values:
+      - {{ .Values | toYaml | nindent 8 }}
+  - path: releases/ingress.yaml.gotmpl
+    values:
+      - {{ .Values | toYaml | nindent 8 }}
+  - path: releases/observability.yaml.gotmpl
+    values:
+      - {{ .Values | toYaml | nindent 8 }}
+  - path: releases/networking.yaml.gotmpl
+    values:
+      - {{ .Values | toYaml | nindent 8 }}
+  - path: releases/argocd.yaml.gotmpl
+    values:
+      - {{ .Values | toYaml | nindent 8 }}

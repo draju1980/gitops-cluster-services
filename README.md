@@ -7,10 +7,10 @@ Production-ready GitOps repository for managing Kubernetes cluster platform serv
 This repository deploys all cluster-wide backend services on an existing Kubernetes cluster:
 
 - **Secrets Management**: In-cluster HashiCorp Vault + External Secrets Operator
-- **Observability**: Prometheus, Grafana Cloud, Loki, Tempo, Thanos
-- **Security**: Kyverno policies, Falco runtime security, Trivy vulnerability scanning
+- **Observability**: Prometheus, Grafana, Loki, Tempo (with local volume storage; S3 optional)
 - **Networking**: Cloudflare Tunnel for ingress, External DNS for Cloudflare DNS
 - **GitOps**: ArgoCD with Helmfile plugin for declarative management
+- **Minimal & Clean**: No security tools forced; users add Kyverno, Falco, Trivy as needed
 
 ## Quick Start
 
@@ -67,44 +67,44 @@ See [BOOTSTRAP.md](./docs/BOOTSTRAP.md) for detailed bootstrap instructions.
 
 ```
 gitops-cluster-services (this repo)
-    ├── helmfile.yaml (orchestrates all releases)
+    ├── helmfile.yaml (orchestrates all releases - 3 environments)
     ├── releases/ (release definitions)
     │   ├── namespaces.yaml.gotmpl
-    │   ├── vault.yaml.gotmpl
-    │   ├── security.yaml.gotmpl
-    │   ├── observability.yaml.gotmpl
-    │   ├── networking.yaml.gotmpl
-    │   └── argocd.yaml.gotmpl
+    │   ├── vault.yaml.gotmpl (in-cluster Vault + ESO)
+    │   ├── observability.yaml.gotmpl (Prometheus, Loki, Tempo - local storage)
+    │   ├── ingress.yaml.gotmpl (External DNS)
+    │   ├── networking.yaml.gotmpl (Cloudflare Tunnel)
+    │   └── argocd.yaml.gotmpl (ArgoCD with Helmfile CMP)
     ├── argocd/
-    │   ├── projects/ (RBAC projects)
-    │   │   ├── platform.yaml
-    │   │   ├── security.yaml
-    │   │   ├── observability.yaml
-    │   │   └── networking.yaml
+    │   ├── projects/ (3 RBAC projects)
+    │   │   ├── platform.yaml (core services)
+    │   │   ├── observability.yaml (monitoring)
+    │   │   └── networking.yaml (Cloudflare/DNS)
     │   └── applications/
     │       └── app-of-apps.yaml (root application)
-    └── vault/ (vault integration examples)
-        ├── auth.yaml
-        ├── secretstore.yaml
-        └── externalsecret-example.yaml
+    ├── vault/ (vault integration examples)
+    │   ├── auth.yaml
+    │   ├── secretstore.yaml
+    │   └── externalsecret-example.yaml
+    └── docs/ (complete documentation)
+        ├── ARCHITECTURE.md
+        ├── BOOTSTRAP.md
+        └── OPERATING_MODEL.md
 ```
 
 ### Technology Stack
 
-| Component | Purpose | Status |
-|-----------|---------|--------|
+| Component | Purpose | Storage |
+|-----------|---------|---------|
 | **Helmfile** | Release orchestration | Single source of truth |
-| **ArgoCD** | GitOps deployment | Auto-sync, prune, self-heal enabled |
+| **ArgoCD** | GitOps deployment | Auto-sync, prune, self-heal |
 | **Vault** | Secret management | In-cluster, HA with Raft |
-| **Kyverno** | Policy engine | Pod security, network policies |
-| **Falco** | Runtime security | Threat detection |
-| **Trivy** | Vulnerability scanning | Image & config scanning |
-| **Prometheus** | Metrics collection | Retention: 24h-30d (env dependent) |
-| **Grafana Cloud** | Visualization & alerting | Remote backend |
-| **Loki** | Log aggregation | S3-compatible storage |
-| **Tempo** | Distributed tracing | OTLP receiver enabled |
-| **Thanos** | Long-term metrics | Object storage querying |
-| **Cloudflare** | Ingress & DNS | Tunnel for ingress, DNS management |
+| **Prometheus** | Metrics collection | Local volumes (PVC) |
+| **Grafana** | Visualization | Querying Prometheus |
+| **Loki** | Log aggregation | Local volumes (PVC) |
+| **Tempo** | Distributed tracing | Local volumes (PVC) |
+| **Thanos** | Long-term metrics | OPTIONAL: S3 (commented in code) |
+| **Cloudflare** | Ingress & DNS | Tunnel + DNS management |
 | **External DNS** | Automatic DNS | Cloudflare integration |
 | **External Secrets** | Secret sync | Vault ↔ Kubernetes |
 
@@ -135,50 +135,46 @@ Three environments supported with different configurations:
 ### Development (`helmfile -e dev`)
 - Single replica services
 - Vault in standalone mode
-- Kyverno in **Audit** mode (logs violations)
-- 24h metric retention
-- No notifications
+- 12h metric retention
+- 5Gi storage for each observability component
+- No Slack notifications
 
 ### Staging (`helmfile -e staging`)
 - 2 replicas for HA
 - Vault with 2-node Raft
-- Kyverno in **Audit** mode
 - 72h metric retention
+- 10Gi storage for each observability component
 - Slack notifications enabled
 
 ### Production (`helmfile -e prod`)
 - 3+ replicas for full HA
 - Vault with 3-node Raft
-- Kyverno in **Enforce** mode (blocks violations)
 - 30-day metric retention
-- Full observability
+- 20-50Gi storage for each observability component
+- Full observability and alerting
 
 ## Key Features
 
 ### 🔐 Secrets Management
-- **In-cluster Vault**: No external dependency
+- **In-cluster Vault**: No external dependency, HA-ready with Raft storage
 - **Kubernetes auth**: Automatic pod authentication
 - **External Secrets Operator**: Keeps Kubernetes Secrets in sync with Vault
 - **Rotation**: Automatic secret refresh every 15 minutes
+- **Secret Zero**: No secrets in git; only placeholders
 
-### 🛡️ Security
-- **Kyverno**: Enforce pod security standards, resource limits, image policies
-- **Falco**: Real-time runtime threat detection
-- **Trivy**: Automated vulnerability scanning
-- **Network Policies**: Default-deny with explicit allow-lists
-- **RBAC**: Project-level access control
-
-### 📊 Observability
-- **Prometheus**: Scrapes cluster metrics
-- **Grafana Cloud**: Managed visualization
-- **Loki**: Log aggregation to Grafana Cloud
-- **Tempo**: Distributed tracing with OTLP
-- **Thanos**: Long-term metrics storage
+### 📊 Observability - Local Storage by Default
+- **Prometheus**: Metrics with local volume storage (configurable retention)
+- **Grafana**: Visualization dashboard for Prometheus/Loki/Tempo
+- **Loki**: Log aggregation with local volume storage
+- **Tempo**: Distributed tracing with OTLP receiver (local storage)
+- **Thanos**: OPTIONAL long-term metrics storage (S3) - commented in code
+- **Storage**: PVC-based local volumes; S3 only if configured
 
 ### 🌐 Networking
 - **Cloudflare Tunnel**: Expose cluster without public IPs
 - **External DNS**: Automatic Cloudflare DNS management
-- **No Ingress Controller**: Cloudflare handles all ingress routing
+- **No Ingress Controller**: Cloudflare Tunnel handles all ingress routing
+- **No TLS Management**: Cloudflare manages TLS certificates
 
 ### 🚀 GitOps
 - **Helmfile + ArgoCD**: Single source of truth
@@ -186,6 +182,12 @@ Three environments supported with different configurations:
 - **Auto-Sync**: Changes deployed automatically
 - **Self-Heal**: Drift corrected automatically
 - **Prune**: Deleted resources removed
+- **3 Environments**: dev, staging, prod with different configs
+
+### 🎯 Minimal & Clean
+- **No Security Tools Forced**: Users add Kyverno, Falco, Trivy as needed
+- **Production-Ready Baseline**: All critical services included
+- **Easy to Extend**: Clear patterns for adding new services
 
 ## Usage
 
@@ -209,12 +211,12 @@ yamllint releases/*.yaml.gotmpl
    ```bash
    git add .
    git commit -m "Update Prometheus retention"
-   git push origin main
+   git push origin master
    ```
 3. **ArgoCD auto-syncs** within 3 minutes
 4. **Monitor in ArgoCD UI**: https://argo-cd.cluster.domain
 
-###  Manage Vault Secrets
+### Manage Vault Secrets
 
 ```bash
 # Create a secret
@@ -252,21 +254,9 @@ kubectl -n monitoring port-forward svc/prometheus-operated 9090:9090
 # Grafana
 kubectl -n monitoring port-forward svc/prometheus-kube-prometheus-grafana 3000:80
 # Visit http://localhost:3000 (default: admin/prom-operator)
-```
 
-### Check Kyverno Policies
-
-```bash
-# View policy violations (in audit mode)
-kubectl get clusterpolicyreports -A
-
-# View policies
-kubectl get clusterpolicies
-
-# Temporarily switch to audit mode
-# Edit helmfile.yaml and change:
-# kyverno.validationFailureAction: "audit"
-helmfile -e prod apply
+# Check local storage usage
+kubectl get pvc -n monitoring
 ```
 
 ## Documentation
@@ -280,38 +270,35 @@ helmfile -e prod apply
 ```
 gitops-cluster-services/
 ├── README.md (this file)
-├── helmfile.yaml (main orchestration file)
+├── helmfile.yaml (main orchestration - dev/staging/prod environments)
 ├── releases/ (helm release definitions)
-│   ├── namespaces.yaml.gotmpl
-│   ├── vault.yaml.gotmpl
-│   ├── security.yaml.gotmpl
-│   ├── ingress.yaml.gotmpl (external-dns only)
-│   ├── observability.yaml.gotmpl
-│   ├── networking.yaml.gotmpl (cloudflare tunnel)
-│   └── argocd.yaml.gotmpl
+│   ├── namespaces.yaml.gotmpl (9 namespaces)
+│   ├── vault.yaml.gotmpl (Vault + External Secrets Operator)
+│   ├── observability.yaml.gotmpl (Prometheus, Grafana, Loki, Tempo - local storage)
+│   ├── ingress.yaml.gotmpl (External DNS only)
+│   ├── networking.yaml.gotmpl (Cloudflare Tunnel)
+│   └── argocd.yaml.gotmpl (ArgoCD with Helmfile CMP plugin)
 ├── argocd/
-│   ├── projects/ (AppProject RBAC)
-│   │   ├── platform.yaml
-│   │   ├── security.yaml
-│   │   ├── observability.yaml
-│   │   └── networking.yaml
+│   ├── projects/ (3 AppProject RBAC)
+│   │   ├── platform.yaml (core infrastructure)
+│   │   ├── observability.yaml (monitoring & logging)
+│   │   └── networking.yaml (Cloudflare & DNS)
 │   └── applications/
 │       └── app-of-apps.yaml (root application)
 ├── bootstrap/
 │   └── argocd/
-│       ├── helm-values.yaml (bootstrap install values)
-│       └── install.sh (bootstrap script)
-├── vault/ (vault integration examples)
-│   ├── auth.yaml (kubernetes auth setup)
-│   ├── secretstore.yaml (ClusterSecretStore config)
-│   └── externalsecret-example.yaml (example ExternalSecret)
-├── security/ (security policy examples)
-├── docs/
-│   ├── ARCHITECTURE.md
-│   ├── BOOTSTRAP.md
-│   ├── OPERATING_MODEL.md
-│   └── TROUBLESHOOTING.md
-└── .gitignore
+│       ├── helm-values.yaml (ArgoCD bootstrap values)
+│       └── install.sh (placeholder for bootstrap script)
+├── vault/ (Vault integration examples)
+│   ├── auth.yaml (Kubernetes auth method setup)
+│   ├── secretstore.yaml (ClusterSecretStore configuration)
+│   └── externalsecret-example.yaml (example ExternalSecret usage)
+├── docs/ (complete documentation)
+│   ├── ARCHITECTURE.md (design decisions, patterns)
+│   ├── BOOTSTRAP.md (step-by-step deployment guide)
+│   └── OPERATING_MODEL.md (day-2 operations, troubleshooting)
+├── .gitignore (excludes .claude/ and common files)
+└── .git/ (git repository)
 ```
 
 ## Customization
@@ -336,6 +323,9 @@ environments:
     values:
       - vault:
           replicas: 5  # Increase replicas
+          storageSize: "100Gi"
+        prometheus:
+          retention: "90d"
 ```
 
 ### Add New Release
@@ -345,13 +335,29 @@ environments:
 3. Commit and push
 4. ArgoCD deploys automatically
 
+### Enable S3 Storage (Optional)
+
+For long-term metrics storage:
+
+1. Uncomment Thanos release in `releases/observability.yaml.gotmpl`
+2. Add S3 config to helmfile.yaml under environments:
+   ```yaml
+   s3:
+     accesskey: "your-key"
+     secretkey: "your-secret"
+     region: "us-east-1"
+     endpoint: "s3.amazonaws.com"
+   ```
+3. Commit and push
+4. ArgoCD deploys Thanos with S3 storage
+
 ## Troubleshooting
 
 See [OPERATING_MODEL.md](./docs/OPERATING_MODEL.md#troubleshooting) for common issues:
 - ArgoCD stuck "Progressing"
 - Vault authentication failing
-- Kyverno blocking deployments
 - Metrics not appearing in Prometheus
+- Storage volume issues
 
 ## Security
 
@@ -361,23 +367,24 @@ See [OPERATING_MODEL.md](./docs/OPERATING_MODEL.md#troubleshooting) for common i
 - Automatic rotation via External Secrets
 - Audit logging for all secret access
 
-### RBAC
-- ArgoCD projects restrict source repos and destinations
-- Kyverno enforces pod security standards
-- Network policies default-deny with explicit allows
+### Network & Access
+- Cloudflare Tunnel for secure cluster access
+- No public ingress IPs exposed
+- Private Kubernetes API access only
+- ClusterSecretStore RBAC controls
 
 ### Compliance
-- Audit logging (Falco, Vault, Kyverno)
-- Vulnerability scanning (Trivy)
-- Policy enforcement (Kyverno)
-- Network segmentation (NetworkPolicies)
+- Local storage with encrypted PVCs (user configured)
+- Optional S3 storage with encryption (user configured)
+- Audit logging via Vault and Kubernetes API server
+- Resource limits and requests enforced
 
 ## Contributing
 
 1. Create a feature branch
 2. Make changes
 3. Test locally: `helmfile -e dev template`
-4. Commit with clear message
+4. Commit with draju1980 profile
 5. Push and create PR
 
 All changes are validated by:
@@ -390,16 +397,15 @@ All changes are validated by:
 - **ArgoCD Docs**: https://argo-cd.readthedocs.io/
 - **Helmfile Docs**: https://helmfile.readthedocs.io/
 - **Vault Docs**: https://www.vaultproject.io/docs/
-- **Kyverno Docs**: https://kyverno.io/docs/
 - **External Secrets**: https://external-secrets.io/
 - **Cloudflare Docs**: https://developers.cloudflare.com/
 
 ## License
 
-[Specify your license]
+MIT
 
 ## Ownership
 
-- **Maintained by**: [Your team]
-- **Contact**: [Email or Slack channel]
-- **On-call**: [Rotation or team responsible for incidents]
+- **Maintained by**: draju1980
+- **GitHub**: https://github.com/draju1980/gitops-cluster-services
+- **Contact**: For issues and questions, use GitHub issues

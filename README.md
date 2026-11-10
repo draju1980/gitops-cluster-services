@@ -22,64 +22,114 @@ This repository deploys all cluster-wide backend services on an existing Kuberne
 - `helmfile` 0.144+
 - GitHub account with personal access token
 - Cloudflare account with API token
+- External Vault instance (HA recommended for production)
+- Grafana Cloud account
 
-### Bootstrap
+### Deploy Cluster Services
 
-1. **Clone this repository**:
-   ```bash
-   git clone https://github.com/draju1980/gitops-cluster-services.git
-   cd gitops-cluster-services
-   ```
+This repository is **environment-agnostic** — deploy the same cluster services to any Kubernetes cluster by setting environment variables.
 
-2. **Create secrets** (see [BOOTSTRAP.md](./docs/BOOTSTRAP.md)):
-   ```bash
-   export GITHUB_TOKEN="ghp_xxxx..."
-   export CLOUDFLARE_TOKEN="xxxx..."
-   export CLOUDFLARE_ACCOUNT_ID="xxxx..."
-   ```
+#### 1. Set Required Environment Variables
 
-3. **Install ArgoCD**:
-   ```bash
-   kubectl create namespace argocd
-   helm repo add argoproj https://argoproj.github.io/argo-helm
-   helm install argocd argoproj/argo-cd \
-     --namespace argocd \
-     --values bootstrap/argocd/helm-values.yaml \
-     --wait
-   ```
+```bash
+export CLUSTER_NAME="my-cluster"           # Unique cluster identifier
+export CLUSTER_DOMAIN="example.com"         # Domain for cluster services
+export GITHUB_TOKEN="ghp_xxxx..."          # GitHub personal access token
+export CLOUDFLARE_TOKEN="xxxx..."          # Cloudflare API token
+export CLOUDFLARE_ACCOUNT_ID="xxxx..."     # Cloudflare account ID
+export ARGOCD_ADMIN_PASSWORD_HASH="$2a..." # bcrypt hash of admin password
+```
 
-4. **Deploy root application** (applies all platform services):
-   ```bash
-   kubectl apply -f argocd/applications/app-of-apps.yaml
-   ```
+Generate bcrypt hash for ArgoCD password:
+```bash
+# Option 1: Using htpasswd
+htpasswd -B -c temp.txt admin
+cat temp.txt | awk -F: '{print $2}'
 
-5. **Access ArgoCD**:
-   ```bash
-   kubectl -n argocd port-forward svc/argocd-server 8080:443
-   # Open https://localhost:8080 in browser
-   ```
+# Option 2: Using Python
+python3 -c "import crypt; print(crypt.crypt('yourpassword', crypt.METHOD_BLOWFISH))"
+```
+
+#### 2. Set Optional Environment Variables (Recommended)
+
+```bash
+# External Vault
+export EXTERNAL_VAULT_SERVER="https://vault.yourdomain.com"
+export EXTERNAL_VAULT_AUTH_ROLE="default"
+
+# Grafana Cloud
+export GRAFANA_CLOUD_USERNAME="you@example.com"
+export GRAFANA_CLOUD_PROM_URL="https://prometheus-blocks-prod-us-central1.grafana.net/api/prom/push"
+export GRAFANA_CLOUD_PROM_PASSWORD="xxxx..."
+export GRAFANA_CLOUD_LOKI_URL="https://logs-prod-us-central1.grafana.net/loki/api/v1/push"
+export GRAFANA_CLOUD_LOKI_PASSWORD="xxxx..."
+
+# Optional: Tempo for distributed tracing
+export GRAFANA_CLOUD_TEMPO_URL="https://tempo-blocks-prod-us-central1.grafana.net:443"
+export GRAFANA_CLOUD_TEMPO_PASSWORD="xxxx..."
+
+# Deployment scaling
+export CLOUDFLARED_REPLICAS="3"  # For HA deployments
+```
+
+#### 3. Deploy Cluster Services
+
+**Option A: Direct Helmfile Deployment**
+
+```bash
+# Preview changes
+helmfile template
+
+# Deploy to cluster
+helmfile sync
+```
+
+**Option B: Use ArgoCD (Recommended for GitOps)**
+
+```bash
+# Install ArgoCD first
+kubectl create namespace argocd
+helm repo add argoproj https://argoproj.github.io/argo-helm
+helm install argocd argoproj/argo-cd \
+  --namespace argocd \
+  --values bootstrap/argocd/helm-values.yaml \
+  --wait
+
+# Deploy cluster services via ArgoCD
+kubectl apply -f argocd/applications/app-of-apps.yaml
+
+# Access ArgoCD
+kubectl -n argocd port-forward svc/argocd-server 8080:443
+# Open https://localhost:8080 in browser
+```
 
 See [BOOTSTRAP.md](./docs/BOOTSTRAP.md) for detailed bootstrap instructions.
 
-## Direct Helmfile Deployment (Without ArgoCD)
+## Environment Variables Reference
 
-If you prefer to deploy without ArgoCD, use Helmfile directly:
+All cluster services are configured via environment variables. Set them before deploying:
 
-```bash
-# Dry-run to preview changes
-helmfile -e prod template
-
-# Apply to cluster
-helmfile -e prod apply
-
-# Or render and apply with kubectl
-helmfile -e prod template | kubectl apply -f -
-
-# Sync with dependencies and hooks
-helmfile -e prod sync
-```
-
-**Note**: Direct Helmfile deployment doesn't provide ArgoCD features like auto-sync, drift detection, or rollback. See [BOOTSTRAP.md](./docs/BOOTSTRAP.md) for the recommended GitOps approach using ArgoCD.
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `CLUSTER_NAME` | ✓ | - | Unique cluster identifier (dev, staging, prod, etc) |
+| `CLUSTER_DOMAIN` | ✓ | - | Domain for cluster services (e.g., example.com) |
+| `GITHUB_TOKEN` | ✓ | - | GitHub personal access token |
+| `CLOUDFLARE_TOKEN` | ✓ | - | Cloudflare API token |
+| `CLOUDFLARE_ACCOUNT_ID` | ✓ | - | Cloudflare account ID |
+| `ARGOCD_ADMIN_PASSWORD_HASH` | ✓ | - | bcrypt hash of ArgoCD admin password |
+| `EXTERNAL_VAULT_SERVER` | ✗ | `https://vault.example.com` | External Vault server URL |
+| `EXTERNAL_VAULT_PATH` | ✗ | `secret` | Vault KV path |
+| `EXTERNAL_VAULT_AUTH_PATH` | ✗ | `kubernetes` | Vault Kubernetes auth method path |
+| `EXTERNAL_VAULT_AUTH_ROLE` | ✗ | `default` | Vault Kubernetes auth role |
+| `GRAFANA_CLOUD_USERNAME` | ✗ | `changeme` | Grafana Cloud username/email |
+| `GRAFANA_CLOUD_PROM_URL` | ✗ | `https://prometheus-blocks-prod-us-central1.grafana.net/api/prom/push` | Grafana Cloud Prometheus endpoint |
+| `GRAFANA_CLOUD_PROM_PASSWORD` | ✗ | `changeme` | Grafana Cloud Prometheus API token |
+| `GRAFANA_CLOUD_LOKI_URL` | ✗ | `https://logs-prod-us-central1.grafana.net/loki/api/v1/push` | Grafana Cloud Loki endpoint |
+| `GRAFANA_CLOUD_LOKI_PASSWORD` | ✗ | `changeme` | Grafana Cloud Loki API token |
+| `GRAFANA_CLOUD_TEMPO_URL` | ✗ | `https://tempo-blocks-prod-us-central1.grafana.net:443` | Grafana Cloud Tempo endpoint |
+| `GRAFANA_CLOUD_TEMPO_PASSWORD` | ✗ | `changeme` | Grafana Cloud Tempo API token |
+| `CLOUDFLARED_REPLICAS` | ✗ | `1` | Number of Cloudflare Tunnel replicas |
+| `AGENT_LOG_LEVEL` | ✗ | `info` | Grafana Agent log level |
 
 ## Architecture
 
@@ -145,30 +195,38 @@ Prune removes deleted resources
 Observability captures metrics/logs/traces
 ```
 
-## Deployment Environments
+## Deployment Patterns
 
-Three environments supported with different configurations:
+Deploy the same cluster services to any environment by adjusting environment variables:
 
-### Development (`helmfile -e dev`)
-- Single replica services
-- External Vault for secret management
-- Grafana Agent in minimal config
-- Grafana Cloud metrics/logs/traces stored by plan
-- No Slack notifications
+### Development Cluster
+```bash
+export CLUSTER_NAME="dev"
+export CLUSTER_DOMAIN="dev.example.com"
+export CLOUDFLARED_REPLICAS="1"
+# ... set other required variables
+helmfile sync
+```
 
-### Staging (`helmfile -e staging`)
-- 2 replicas for HA
-- External Vault for secret management (shared or dedicated)
-- Grafana Agent for enhanced collection
-- Grafana Cloud with staging retention policy
-- Slack notifications enabled
+### Staging Cluster
+```bash
+export CLUSTER_NAME="staging"
+export CLUSTER_DOMAIN="staging.example.com"
+export CLOUDFLARED_REPLICAS="2"
+# ... set other required variables
+helmfile sync
+```
 
-### Production (`helmfile -e prod`)
-- 3+ replicas for full HA
-- External Vault for secret management (HA cluster recommended)
-- Grafana Agent with comprehensive monitoring
-- Grafana Cloud with extended retention
-- Full observability and alerting
+### Production Cluster
+```bash
+export CLUSTER_NAME="prod"
+export CLUSTER_DOMAIN="example.com"
+export CLOUDFLARED_REPLICAS="3"
+# ... set other required variables with production values
+helmfile sync
+```
+
+All clusters deploy identical services — only configuration values differ.
 
 ## Key Features
 
@@ -209,32 +267,41 @@ Three environments supported with different configurations:
 
 ## Usage
 
-### Validate Helmfile
+### Validate Configuration
+
+Before deploying, validate your environment variables and Helmfile:
 
 ```bash
-# Render manifests for an environment
-helmfile -e dev template | head -50
+# Check that required environment variables are set
+echo "CLUSTER_NAME: $CLUSTER_NAME"
+echo "CLUSTER_DOMAIN: $CLUSTER_DOMAIN"
+echo "GITHUB_TOKEN: ${GITHUB_TOKEN:0:10}..."  # Show only first 10 chars
+
+# Render manifests to preview
+helmfile template | head -100
 
 # Validate with kubeconform
-helmfile -e prod template | kubeconform -strict
+helmfile template | kubeconform -strict
 
 # Lint YAML
 yamllint releases/*.yaml.gotmpl
 ```
 
-### Deploy All Services (via Helmfile)
+### Deploy All Services
 
-To deploy all cluster services directly using Helmfile:
+Deploy cluster services with environment variables set:
 
 ```bash
-# For development environment
-helmfile -e dev template | kubectl apply -f -
+# Set all required environment variables (see "Set Required Environment Variables" above)
 
-# For staging environment
-helmfile -e staging template | kubectl apply -f -
+# Preview changes
+helmfile template
 
-# For production environment
-helmfile -e prod template | kubectl apply -f -
+# Deploy to cluster
+helmfile sync
+
+# Or apply directly
+helmfile template | kubectl apply -f -
 ```
 
 ### Deploy Changes (via ArgoCD - Recommended)

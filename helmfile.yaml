@@ -23,150 +23,66 @@ repositories:
   url: https://aquasecurity.github.io/helm-charts/
 
 ---
+# Environment-agnostic Helmfile
+# Deploy cluster services to any Kubernetes cluster by passing environment variables
+#
+# Required environment variables:
+#   CLUSTER_NAME           - Unique cluster identifier (dev, staging, prod, etc)
+#   CLUSTER_DOMAIN         - Domain for cluster services (e.g., example.com)
+#   GITHUB_TOKEN           - GitHub personal access token for git operations
+#   CLOUDFLARE_TOKEN       - Cloudflare API token for DNS and tunnel
+#   CLOUDFLARE_ACCOUNT_ID  - Cloudflare account ID
+#   ARGOCD_ADMIN_PASSWORD_HASH - bcrypt hash of ArgoCD admin password
+#
+# Optional environment variables:
+#   CLOUDFLARED_REPLICAS       - Number of cloudflared replicas (default: 1)
+#   EXTERNAL_VAULT_SERVER      - External Vault server URL
+#   EXTERNAL_VAULT_PATH        - Vault KV path (default: secret)
+#   EXTERNAL_VAULT_AUTH_PATH   - Vault auth method path (default: kubernetes)
+#   EXTERNAL_VAULT_AUTH_ROLE   - Vault Kubernetes auth role (default: default)
+#   GRAFANA_CLOUD_USERNAME     - Grafana Cloud username/email
+#   GRAFANA_CLOUD_PROM_URL     - Grafana Cloud Prometheus push URL
+#   GRAFANA_CLOUD_PROM_PASSWORD - Grafana Cloud Prometheus API token
+#   GRAFANA_CLOUD_LOKI_URL     - Grafana Cloud Loki push URL
+#   GRAFANA_CLOUD_LOKI_PASSWORD - Grafana Cloud Loki API token
+#   GRAFANA_CLOUD_TEMPO_URL    - Grafana Cloud Tempo URL (optional)
+#   GRAFANA_CLOUD_TEMPO_PASSWORD - Grafana Cloud Tempo API token (optional)
+#   AGENT_LOG_LEVEL            - Grafana Agent log level (default: info)
+
 environments:
-  dev:
-    values:
-      - clusterName: dev
-        domain: bls.dev
-        environment: dev
-        argocd:
-          adminpasswordhashed: "$2a$10$R9h7cIPooruNMMwq.L7KqOOtV27x8BwwfHuPVnKfKWGz/BnQuZ8eC"
-          notifications:
-            enabled: false
-        github:
-          accesstoken: "changeme"
-        cloudflare:
-          apitoken: "changeme"
-          accountid: "changeme"
-        cloudflared:
-          replicaCount: 1
-        # External Vault configuration for secrets management
-        externalVault:
-          server: "https://vault.example.com"  # Change to your external Vault URL
-          path: "secret"  # KV v2 path in Vault
-          version: "v2"  # Vault KV version
-          authPath: "kubernetes"  # Auth method path in Vault
-          authRole: "default"  # Kubernetes auth role in Vault
-        # Grafana Cloud configuration for observability
-        grafanaCloud:
-          username: "changeme"  # Grafana Cloud instance username
-          prometheusUrl: "https://prometheus-blocks-prod-us-central1.grafana.net/api/prom/push"
-          prometheusPassword: "changeme"  # API token from Grafana Cloud
-          lokiUrl: "https://logs-prod-us-central1.grafana.net/loki/api/v1/push"
-          lokiPassword: "changeme"  # API token from Grafana Cloud
-          tempoUrl: "https://tempo-blocks-prod-us-central1.grafana.net:443"
-          tempoPassword: "changeme"  # API token from Grafana Cloud
-        # Agent configuration
-        agent:
-          logLevel: "info"
-
-  staging:
-    values:
-      - clusterName: staging
-        domain: bls.dev
-        environment: staging
-        argocd:
-          adminpasswordhashed: "$2a$10$R9h7cIPooruNMMwq.L7KqOOtV27x8BwwfHuPVnKfKWGz/BnQuZ8eC"
-          notifications:
-            enabled: true
-        github:
-          accesstoken: "changeme"
-        cloudflare:
-          apitoken: "changeme"
-          accountid: "changeme"
-        cloudflared:
-          replicaCount: 2
-        # External Vault configuration for secrets management
-        externalVault:
-          server: "https://vault.example.com"  # Change to your external Vault URL
-          path: "secret"  # KV v2 path in Vault
-          version: "v2"  # Vault KV version
-          authPath: "kubernetes"  # Auth method path in Vault
-          authRole: "default"  # Kubernetes auth role in Vault
-        # Grafana Cloud configuration for observability
-        grafanaCloud:
-          username: "changeme"  # Grafana Cloud instance username
-          prometheusUrl: "https://prometheus-blocks-prod-us-central1.grafana.net/api/prom/push"
-          prometheusPassword: "changeme"  # API token from Grafana Cloud
-          lokiUrl: "https://logs-prod-us-central1.grafana.net/loki/api/v1/push"
-          lokiPassword: "changeme"  # API token from Grafana Cloud
-          tempoUrl: "https://tempo-blocks-prod-us-central1.grafana.net:443"
-          tempoPassword: "changeme"  # API token from Grafana Cloud
-        # Agent configuration
-        agent:
-          logLevel: "info"
-
-  prod:
-    values:
-      - clusterName: prod
-        domain: bls.dev
-        environment: prod
-        argocd:
-          adminpasswordhashed: "$2a$10$R9h7cIPooruNMMwq.L7KqOOtV27x8BwwfHuPVnKfKWGz/BnQuZ8eC"
-          notifications:
-            enabled: true
-        github:
-          accesstoken: "changeme"
-        cloudflare:
-          apitoken: "changeme"
-          accountid: "changeme"
-        cloudflared:
-          replicaCount: 3
-        # External Vault configuration for secrets management
-        externalVault:
-          server: "https://vault.example.com"  # Change to your external Vault URL
-          path: "secret"  # KV v2 path in Vault
-          version: "v2"  # Vault KV version
-          authPath: "kubernetes"  # Auth method path in Vault
-          authRole: "default"  # Kubernetes auth role in Vault
-        # Grafana Cloud configuration for observability
-        grafanaCloud:
-          username: "changeme"  # Grafana Cloud instance username
-          prometheusUrl: "https://prometheus-blocks-prod-us-central1.grafana.net/api/prom/push"
-          prometheusPassword: "changeme"  # API token from Grafana Cloud
-          lokiUrl: "https://logs-prod-us-central1.grafana.net/loki/api/v1/push"
-          lokiPassword: "changeme"  # API token from Grafana Cloud
-          tempoUrl: "https://tempo-blocks-prod-us-central1.grafana.net:443"
-          tempoPassword: "changeme"  # API token from Grafana Cloud
-        # Agent configuration
-        agent:
-          logLevel: "info"
-
   default:
     values:
-      - clusterName: dev
-        domain: bls.dev
-        environment: dev
+      - clusterName: {{ env "CLUSTER_NAME" | default "default" }}
+        domain: {{ env "CLUSTER_DOMAIN" | default "example.com" }}
+        environment: {{ env "CLUSTER_NAME" | default "default" }}
         argocd:
-          adminpasswordhashed: "$2a$10$R9h7cIPooruNMMwq.L7KqOOtV27x8BwwfHuPVnKfKWGz/BnQuZ8eC"
+          adminpasswordhashed: {{ env "ARGOCD_ADMIN_PASSWORD_HASH" | default "$2a$10$R9h7cIPooruNMMwq.L7KqOOtV27x8BwwfHuPVnKfKWGz/BnQuZ8eC" }}
           notifications:
             enabled: false
         github:
-          accesstoken: "changeme"
+          accesstoken: {{ env "GITHUB_TOKEN" | default "changeme" }}
         cloudflare:
-          apitoken: "changeme"
-          accountid: "changeme"
+          apitoken: {{ env "CLOUDFLARE_TOKEN" | default "changeme" }}
+          accountid: {{ env "CLOUDFLARE_ACCOUNT_ID" | default "changeme" }}
         cloudflared:
-          replicaCount: 1
-        # External Vault configuration for secrets management
+          replicaCount: {{ env "CLOUDFLARED_REPLICAS" | default "1" | atoi }}
         externalVault:
-          server: "https://vault.example.com"  # Change to your external Vault URL
-          path: "secret"  # KV v2 path in Vault
-          version: "v2"  # Vault KV version
-          authPath: "kubernetes"  # Auth method path in Vault
-          authRole: "default"  # Kubernetes auth role in Vault
-        # Grafana Cloud configuration for observability
+          server: {{ env "EXTERNAL_VAULT_SERVER" | default "https://vault.example.com" }}
+          path: {{ env "EXTERNAL_VAULT_PATH" | default "secret" }}
+          version: v2
+          authPath: {{ env "EXTERNAL_VAULT_AUTH_PATH" | default "kubernetes" }}
+          authRole: {{ env "EXTERNAL_VAULT_AUTH_ROLE" | default "default" }}
         grafanaCloud:
-          username: "changeme"  # Grafana Cloud instance username
-          prometheusUrl: "https://prometheus-blocks-prod-us-central1.grafana.net/api/prom/push"
-          prometheusPassword: "changeme"  # API token from Grafana Cloud
-          lokiUrl: "https://logs-prod-us-central1.grafana.net/loki/api/v1/push"
-          lokiPassword: "changeme"  # API token from Grafana Cloud
-          tempoUrl: "https://tempo-blocks-prod-us-central1.grafana.net:443"
-          tempoPassword: "changeme"  # API token from Grafana Cloud
-        # Agent configuration
+          username: {{ env "GRAFANA_CLOUD_USERNAME" | default "changeme" }}
+          prometheusUrl: {{ env "GRAFANA_CLOUD_PROM_URL" | default "https://prometheus-blocks-prod-us-central1.grafana.net/api/prom/push" }}
+          prometheusPassword: {{ env "GRAFANA_CLOUD_PROM_PASSWORD" | default "changeme" }}
+          lokiUrl: {{ env "GRAFANA_CLOUD_LOKI_URL" | default "https://logs-prod-us-central1.grafana.net/loki/api/v1/push" }}
+          lokiPassword: {{ env "GRAFANA_CLOUD_LOKI_PASSWORD" | default "changeme" }}
+          tempoUrl: {{ env "GRAFANA_CLOUD_TEMPO_URL" | default "https://tempo-blocks-prod-us-central1.grafana.net:443" }}
+          tempoPassword: {{ env "GRAFANA_CLOUD_TEMPO_PASSWORD" | default "changeme" }}
         agent:
-          logLevel: "info"
+          logLevel: {{ env "AGENT_LOG_LEVEL" | default "info" }}
+
 ---
 helmfiles:
   - path: releases/namespaces.yaml.gotmpl

@@ -6,7 +6,7 @@ Production-ready GitOps repository for managing Kubernetes cluster platform serv
 
 This repository deploys all cluster-wide backend services on an existing Kubernetes cluster:
 
-- **Secrets Management**: In-cluster HashiCorp Vault + External Secrets Operator
+- **Secrets Management**: External HashiCorp Vault + External Secrets Operator (syncs to K8s Secrets)
 - **Observability**: Grafana Cloud (Prometheus, Loki, Tempo) with Grafana Agent for collection
 - **Networking**: Cloudflare Tunnel for ingress, External DNS for Cloudflare DNS
 - **GitOps**: ArgoCD with Helmfile plugin for declarative management
@@ -90,7 +90,7 @@ gitops-cluster-services (this repo)
     ├── helmfile.yaml (orchestrates all releases - 3 environments)
     ├── releases/ (release definitions)
     │   ├── namespaces.yaml.gotmpl
-    │   ├── vault.yaml.gotmpl (in-cluster Vault + ESO)
+    │   ├── vault.yaml.gotmpl (ESO → External Vault)
     │   ├── observability.yaml.gotmpl (Grafana Agent → Grafana Cloud)
     │   ├── ingress.yaml.gotmpl (External DNS)
     │   ├── networking.yaml.gotmpl (Cloudflare Tunnel)
@@ -118,12 +118,12 @@ gitops-cluster-services (this repo)
 |-----------|---------|----------|
 | **Helmfile** | Release orchestration | Single source of truth |
 | **ArgoCD** | GitOps deployment | Auto-sync, prune, self-heal |
-| **Vault** | Secret management | In-cluster, HA with Raft |
+| **External Vault** | Secret management | External service (resilient) |
+| **External Secrets** | Secret sync | External Vault ↔ K8s Secrets |
 | **Grafana Agent** | Metrics/logs/traces collection | DaemonSet + StatefulSet |
 | **Grafana Cloud** | Observability platform | Managed Prometheus, Loki, Tempo |
 | **Cloudflare** | Ingress & DNS | Tunnel + DNS management |
 | **External DNS** | Automatic DNS | Cloudflare integration |
-| **External Secrets** | Secret sync | Vault ↔ Kubernetes |
 
 ### Data Flow
 
@@ -151,21 +151,21 @@ Three environments supported with different configurations:
 
 ### Development (`helmfile -e dev`)
 - Single replica services
-- Vault in standalone mode
+- External Vault for secret management
 - Grafana Agent in minimal config
 - Grafana Cloud metrics/logs/traces stored by plan
 - No Slack notifications
 
 ### Staging (`helmfile -e staging`)
 - 2 replicas for HA
-- Vault with 2-node Raft
+- External Vault for secret management (shared or dedicated)
 - Grafana Agent for enhanced collection
 - Grafana Cloud with staging retention policy
 - Slack notifications enabled
 
 ### Production (`helmfile -e prod`)
 - 3+ replicas for full HA
-- Vault with 3-node Raft
+- External Vault for secret management (HA cluster recommended)
 - Grafana Agent with comprehensive monitoring
 - Grafana Cloud with extended retention
 - Full observability and alerting
@@ -173,11 +173,12 @@ Three environments supported with different configurations:
 ## Key Features
 
 ### 🔐 Secrets Management
-- **In-cluster Vault**: No external dependency, HA-ready with Raft storage
-- **Kubernetes auth**: Automatic pod authentication
-- **External Secrets Operator**: Keeps Kubernetes Secrets in sync with Vault
-- **Rotation**: Automatic secret refresh every 15 minutes
-- **Secret Zero**: No secrets in git; only placeholders
+- **External Vault**: Resilient external service, survives cluster outages
+- **Kubernetes auth**: Automatic pod authentication via ServiceAccount
+- **External Secrets Operator**: Syncs secrets from Vault to Kubernetes Secrets
+- **Rotation**: Automatic secret refresh (configurable)
+- **Secret Zero**: No secrets in git; all stored in external Vault
+- **Disaster Recovery**: Cluster-independent secrets ensure data safety
 
 ### 📊 Observability - Grafana Cloud
 - **Grafana Agent**: Collects metrics, logs, and traces from cluster
@@ -252,12 +253,10 @@ helmfile -e prod template | kubectl apply -f -
 
 ### Manage Vault Secrets
 
-```bash
-# Create a secret
-kubectl -n vault exec -it vault-0 -- vault kv put secret/myapp/db \
-  username=admin password=secret
+All secrets are stored in your external Vault instance. To sync secrets to Kubernetes:
 
-# Create ExternalSecret to sync it
+```bash
+# Create ExternalSecret to sync from external Vault
 kubectl apply -f - <<'EOF'
 apiVersion: external-secrets.io/v1beta1
 kind: ExternalSecret
@@ -266,17 +265,29 @@ metadata:
   namespace: default
 spec:
   secretStoreRef:
-    name: vault
+    name: vault  # References the ClusterSecretStore
     kind: ClusterSecretStore
   target:
-    name: app-db
+    name: app-db  # Target Kubernetes Secret name
   data:
     - secretKey: username
       remoteRef:
+        key: myapp/db      # Path in external Vault
+        property: username # Property in secret
+    - secretKey: password
+      remoteRef:
         key: myapp/db
-        property: username
+        property: password
 EOF
+
+# External Secrets Operator will automatically:
+# - Authenticate to external Vault using Kubernetes auth
+# - Fetch secrets from your Vault instance
+# - Create/update the Kubernetes Secret
+# - Refresh secrets on configured intervals
 ```
+
+**Note**: The ClusterSecretStore is pre-configured in the `vault-secretstore` release to connect to your external Vault using Kubernetes authentication.
 
 ### Monitor Observability
 
@@ -315,7 +326,7 @@ gitops-cluster-services/
 ├── helmfile.yaml (main orchestration - dev/staging/prod environments)
 ├── releases/ (helm release definitions)
 │   ├── namespaces.yaml.gotmpl (9 namespaces)
-│   ├── vault.yaml.gotmpl (Vault + External Secrets Operator)
+│   ├── vault.yaml.gotmpl (External Secrets Operator for external Vault)
 │   ├── observability.yaml.gotmpl (Grafana Agent for Grafana Cloud)
 │   ├── ingress.yaml.gotmpl (External DNS only)
 │   ├── networking.yaml.gotmpl (Cloudflare Tunnel)
@@ -376,6 +387,37 @@ environments:
 2. Add to `helmfile.yaml` helmfiles section
 3. Commit and push
 4. ArgoCD deploys automatically
+
+### Configure External Vault (Required)
+
+To connect to your external Vault instance:
+
+1. Set up external Vault (standalone, HA cluster, or managed service)
+2. Enable Kubernetes auth method in Vault:
+   ```bash
+   vault auth enable kubernetes
+   vault write auth/kubernetes/config \
+     kubernetes_host="https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_SERVICE_PORT" \
+     kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+     token_reviewer_jwt=@/var/run/secrets/kubernetes.io/serviceaccount/token
+   
+   # Create a role for External Secrets Operator
+   vault write auth/kubernetes/role/default \
+     bound_service_account_names=external-secrets-vault \
+     bound_service_account_namespaces=external-secrets \
+     policies=default
+   ```
+3. Update `helmfile.yaml` for each environment:
+   ```yaml
+   externalVault:
+     server: "https://vault.yourdomain.com"  # Your Vault server URL
+     path: "secret"  # KV v2 path
+     version: "v2"
+     authPath: "kubernetes"
+     authRole: "default"  # Must match role created above
+   ```
+4. Commit and push
+5. ArgoCD deploys External Secrets Operator configured for external Vault
 
 ### Configure Grafana Cloud Endpoints (Required)
 

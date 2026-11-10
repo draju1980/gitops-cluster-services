@@ -40,6 +40,13 @@ environments:
           accountid: "changeme"
         cloudflared:
           replicaCount: 1
+        # External Vault configuration for secrets management
+        externalVault:
+          server: "https://vault.example.com"  # Change to your external Vault URL
+          path: "secret"  # KV v2 path in Vault
+          version: "v2"  # Vault KV version
+          authPath: "kubernetes"  # Auth method path in Vault
+          authRole: "default"  # Kubernetes auth role in Vault
         # Grafana Cloud configuration for observability
         grafanaCloud:
           username: "changeme"  # Grafana Cloud instance username
@@ -69,6 +76,13 @@ environments:
           accountid: "changeme"
         cloudflared:
           replicaCount: 2
+        # External Vault configuration for secrets management
+        externalVault:
+          server: "https://vault.example.com"  # Change to your external Vault URL
+          path: "secret"  # KV v2 path in Vault
+          version: "v2"  # Vault KV version
+          authPath: "kubernetes"  # Auth method path in Vault
+          authRole: "default"  # Kubernetes auth role in Vault
         # Grafana Cloud configuration for observability
         grafanaCloud:
           username: "changeme"  # Grafana Cloud instance username
@@ -98,6 +112,13 @@ environments:
           accountid: "changeme"
         cloudflared:
           replicaCount: 3
+        # External Vault configuration for secrets management
+        externalVault:
+          server: "https://vault.example.com"  # Change to your external Vault URL
+          path: "secret"  # KV v2 path in Vault
+          version: "v2"  # Vault KV version
+          authPath: "kubernetes"  # Auth method path in Vault
+          authRole: "default"  # Kubernetes auth role in Vault
         # Grafana Cloud configuration for observability
         grafanaCloud:
           username: "changeme"  # Grafana Cloud instance username
@@ -127,6 +148,13 @@ environments:
           accountid: "changeme"
         cloudflared:
           replicaCount: 1
+        # External Vault configuration for secrets management
+        externalVault:
+          server: "https://vault.example.com"  # Change to your external Vault URL
+          path: "secret"  # KV v2 path in Vault
+          version: "v2"  # Vault KV version
+          authPath: "kubernetes"  # Auth method path in Vault
+          authRole: "default"  # Kubernetes auth role in Vault
         # Grafana Cloud configuration for observability
         grafanaCloud:
           username: "changeme"  # Grafana Cloud instance username

@@ -1,3 +1,4 @@
+---
 releases:
   - name: metrics-server
     namespace: kube-system
@@ -42,32 +43,39 @@ releases:
             discovery.relabel "kubernetes_pod_metrics" {
               targets = discovery.kubernetes.kubernetes.targets
               rule {
-                source_labels = ["__meta_kubernetes_pod_annotation_prometheus_io_scrape"]
-                action         = "keep"
-                regex          = "true"
+                source_labels = [
+                  "__meta_kubernetes_pod_annotation_prometheus_io_scrape"
+                ]
+                action = "keep"
+                regex  = "true"
               }
               rule {
-                source_labels = ["__meta_kubernetes_pod_annotation_prometheus_io_path"]
-                action         = "replace"
-                target_label   = "__metrics_path__"
-                regex          = "(.+)"
+                source_labels = [
+                  "__meta_kubernetes_pod_annotation_prometheus_io_path"
+                ]
+                action       = "replace"
+                target_label = "__metrics_path__"
+                regex        = "(.+)"
               }
               rule {
-                source_labels = ["__address__", "__meta_kubernetes_pod_annotation_prometheus_io_port"]
-                action         = "replace"
-                regex          = "([^:]+)(?::\\d+)?;(\\d+)"
-                replacement    = "$1:$2"
-                target_label   = "__address__"
+                source_labels = [
+                  "__address__",
+                  "__meta_kubernetes_pod_annotation_prometheus_io_port"
+                ]
+                action       = "replace"
+                regex        = "([^:]+)(?::\\d+)?;(\\d+)"
+                replacement  = "$1:$2"
+                target_label = "__address__"
               }
               rule {
-                action       = "labelmap"
-                regex        = "__meta_kubernetes_pod_label_(.+)"
-                replacement  = "pod_label_${1}"
+                action      = "labelmap"
+                regex       = "__meta_kubernetes_pod_label_(.+)"
+                replacement = "pod_label_${1}"
               }
               rule {
-                action       = "labelmap"
-                regex        = "__meta_kubernetes_pod_annotation_(.+)"
-                replacement  = "pod_annotation_${1}"
+                action      = "labelmap"
+                regex       = "__meta_kubernetes_pod_annotation_(.+)"
+                replacement = "pod_annotation_${1}"
               }
               rule {
                 source_labels = ["__meta_kubernetes_namespace"]
@@ -145,7 +153,9 @@ releases:
               client {
                 endpoint = "{{ .Values.grafanaCloud.tempoUrl }}"
                 headers  = {
-                  "Authorization" = "Bearer {{ .Values.grafanaCloud.tempoPassword }}",
+                  "Authorization" = (
+                    "Bearer " + "{{ .Values.grafanaCloud.tempoPassword }}"
+                  ),
                 }
               }
             }

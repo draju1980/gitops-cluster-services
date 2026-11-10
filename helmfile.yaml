@@ -40,24 +40,18 @@ environments:
           accountid: "changeme"
         cloudflared:
           replicaCount: 1
-        grafana:
-          adminpassword: "changeme"
-        # Observability storage (local volumes by default)
-        prometheus:
-          retention: "24h"
-          storageSize: "10Gi"
-        loki:
-          retention_period: "24h"
-          storageSize: "10Gi"
-        tempo:
-          replicas: 1
-          storageSize: "10Gi"
-        # Optional: S3 storage (uncomment and configure if needed)
-        # s3:
-        #   accesskey: "changeme"
-        #   secretkey: "changeme"
-        #   region: "nyc3"
-        #   endpoint: "s3.amazonaws.com"
+        # Grafana Cloud configuration for observability
+        grafanaCloud:
+          username: "changeme"  # Grafana Cloud instance username
+          prometheusUrl: "https://prometheus-blocks-prod-us-central1.grafana.net/api/prom/push"
+          prometheusPassword: "changeme"  # API token from Grafana Cloud
+          lokiUrl: "https://logs-prod-us-central1.grafana.net/loki/api/v1/push"
+          lokiPassword: "changeme"  # API token from Grafana Cloud
+          tempoUrl: "https://tempo-blocks-prod-us-central1.grafana.net:443"
+          tempoPassword: "changeme"  # API token from Grafana Cloud
+        # Agent configuration
+        agent:
+          logLevel: "info"
 
   staging:
     values:
@@ -75,20 +69,18 @@ environments:
           accountid: "changeme"
         cloudflared:
           replicaCount: 2
-        grafana:
-          adminpassword: "changeme"
-        loki:
-          region: "nyc3"
-          accesskey: "changeme"
-          secretkey: "changeme"
-          retention_period: 72h
-        thanos:
-          region: "nyc3"
-          accesskey: "changeme"
-          secretkey: "changeme"
-          retentionResolutionRaw: 3d
-          retentionResolution5m: 30d
-          retentionResolution1h: 90d
+        # Grafana Cloud configuration for observability
+        grafanaCloud:
+          username: "changeme"  # Grafana Cloud instance username
+          prometheusUrl: "https://prometheus-blocks-prod-us-central1.grafana.net/api/prom/push"
+          prometheusPassword: "changeme"  # API token from Grafana Cloud
+          lokiUrl: "https://logs-prod-us-central1.grafana.net/loki/api/v1/push"
+          lokiPassword: "changeme"  # API token from Grafana Cloud
+          tempoUrl: "https://tempo-blocks-prod-us-central1.grafana.net:443"
+          tempoPassword: "changeme"  # API token from Grafana Cloud
+        # Agent configuration
+        agent:
+          logLevel: "info"
 
   prod:
     values:
@@ -106,20 +98,18 @@ environments:
           accountid: "changeme"
         cloudflared:
           replicaCount: 3
-        grafana:
-          adminpassword: "changeme"
-        loki:
-          region: "nyc3"
-          accesskey: "changeme"
-          secretkey: "changeme"
-          retention_period: 720h
-        thanos:
-          region: "nyc3"
-          accesskey: "changeme"
-          secretkey: "changeme"
-          retentionResolutionRaw: 3d
-          retentionResolution5m: 30d
-          retentionResolution1h: 90d
+        # Grafana Cloud configuration for observability
+        grafanaCloud:
+          username: "changeme"  # Grafana Cloud instance username
+          prometheusUrl: "https://prometheus-blocks-prod-us-central1.grafana.net/api/prom/push"
+          prometheusPassword: "changeme"  # API token from Grafana Cloud
+          lokiUrl: "https://logs-prod-us-central1.grafana.net/loki/api/v1/push"
+          lokiPassword: "changeme"  # API token from Grafana Cloud
+          tempoUrl: "https://tempo-blocks-prod-us-central1.grafana.net:443"
+          tempoPassword: "changeme"  # API token from Grafana Cloud
+        # Agent configuration
+        agent:
+          logLevel: "info"
 
   default:
     values:
@@ -137,24 +127,18 @@ environments:
           accountid: "changeme"
         cloudflared:
           replicaCount: 1
-        grafana:
-          adminpassword: "changeme"
-        # Observability storage (local volumes by default)
-        prometheus:
-          retention: "24h"
-          storageSize: "10Gi"
-        loki:
-          retention_period: "24h"
-          storageSize: "10Gi"
-        tempo:
-          replicas: 1
-          storageSize: "10Gi"
-        # Optional: S3 storage (uncomment and configure if needed)
-        # s3:
-        #   accesskey: "changeme"
-        #   secretkey: "changeme"
-        #   region: "nyc3"
-        #   endpoint: "s3.amazonaws.com"
+        # Grafana Cloud configuration for observability
+        grafanaCloud:
+          username: "changeme"  # Grafana Cloud instance username
+          prometheusUrl: "https://prometheus-blocks-prod-us-central1.grafana.net/api/prom/push"
+          prometheusPassword: "changeme"  # API token from Grafana Cloud
+          lokiUrl: "https://logs-prod-us-central1.grafana.net/loki/api/v1/push"
+          lokiPassword: "changeme"  # API token from Grafana Cloud
+          tempoUrl: "https://tempo-blocks-prod-us-central1.grafana.net:443"
+          tempoPassword: "changeme"  # API token from Grafana Cloud
+        # Agent configuration
+        agent:
+          logLevel: "info"
 ---
 helmfiles:
   - path: releases/namespaces.yaml.gotmpl

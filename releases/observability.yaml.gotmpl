@@ -1,189 +1,199 @@
 releases:
-  - name: prometheus-operator-crds
-    chart: prometheus-community/prometheus-operator-crds
-    namespace: monitoring
-    forceNamespace: monitoring
-    version: 22.0.2
-
-  - name: kube-prometheus-stack
-    namespace: monitoring
-    forceNamespace: monitoring
-    chart: prometheus-community/kube-prometheus-stack
-    version: 82.1.0
-    values:
-      - crds:
-          enabled: false
-        grafana:
-          adminUser: admin
-          adminPassword: {{ .Values.grafana.adminpassword }}
-          ingress:
-            enabled: false
-          sidecar:
-            datasources:
-              enabled: false
-            notifiers:
-              enabled: false
-          datasources:
-            datasources.yaml:
-              apiVersion: 1
-              datasources:
-              - name: Prometheus (Local)
-                type: prometheus
-                url: http://prometheus-operated:9090
-                isDefault: true
-              - name: Loki
-                type: loki
-                url: http://loki-gateway.monitoring.svc.cluster.local:80
-              - name: Tempo
-                type: tempo
-                url: http://tempo-query-frontend.monitoring.svc.cluster.local:3200
-                jsonData:
-                  httpMethod: GET
-                  serviceMap:
-                    datasourceUid: 'prom'
-                  nodeGraph:
-                    enabled: true
-                  lokiSearch:
-                    datasourceUid: 'loki'
-        prometheus:
-          prometheusSpec:
-            enableOTLPReceiver: true
-            otlp:
-              promoteResourceAttributes:
-                - os.type
-                - host.name
-                - telemetry.sdk.language
-                - telemetry.sdk.name
-                - session.id
-                - deployment.environment
-                - service.name
-                - service.version
-            disableCompaction: false
-            retention: {{ .Values.prometheus.retention | default "24h" }}
-            tsdb:
-              blockDuration: 1h
-              outOfOrderTimeWindow: 60s
-            serviceMonitorSelectorNilUsesHelmValues: false
-            serviceMonitorSelector: {}
-            serviceMonitorNamespaceSelector: {}
-            storageSpec:
-              volumeClaimTemplate:
-                spec:
-                  storageClassName: "standard"  # Local storage - change to your storage class
-                  accessModes: ["ReadWriteOnce"]
-                  resources:
-                    requests:
-                      storage: {{ .Values.prometheus.storageSize | default "20Gi" }}
-            additionalScrapeConfigs: []
-            additionalScrapeConfigsSecret: {}
-            scrapeProtocols:
-              - OpenMetricsText0.0.1
-              - OpenMetricsText1.0.0
-              - PrometheusProto
-              - PrometheusText0.0.4
-        prometheusOperator:
-          kubeletEndpointSliceEnabled: true
-          kubeletEndpointsEnabled: false
-
   - name: metrics-server
     namespace: kube-system
     forceNamespace: kube-system
     chart: metrics-server/metrics-server
     version: 3.13.0
 
-  - name: loki
+  # Grafana Agent for metrics and logs collection to Grafana Cloud
+  - name: grafana-agent
     namespace: monitoring
     forceNamespace: monitoring
-    chart: grafana/loki
-    version: 6.35.1
+    chart: grafana/grafana-agent
+    version: 0.29.0
     values:
-      - loki:
-          auth_enabled: false
-          limits_config:
-            retention_period: {{ .Values.loki.retention_period | default "24h" }}
-          storage:
-            type: filesystem
-          schemaConfig:
-            configs:
-              - from: "2024-01-01"
-                index:
-                  period: 24h
-                  prefix: loki_index_
-                object_store: filesystem
-                schema: v13
-                store: tsdb
-          derivedFields:
-            - datasourceUid: tempo
-              matcherRegex: "traceID=(\\w+)"
-              name: TraceID
-              url: "$${__value.raw}"
-        persistence:
-          enabled: true
-          size: {{ .Values.loki.storageSize | default "10Gi" }}
-          storageClassName: "standard"  # Local storage
+      - agent:
+          mode: flow
+          configMap:
+            create: true
+          config: |
+            // Grafana Agent Flow configuration for Grafana Cloud integration
+            logging {
+              level  = "{{ .Values.agent.logLevel | default "info" }}"
+              format = "json"
+            }
+
+            // Prometheus remote write (metrics)
+            prometheus.remote_write "grafana_cloud" {
+              endpoint {
+                url = "{{ .Values.grafanaCloud.prometheusUrl }}"
+                basic_auth {
+                  username = "{{ .Values.grafanaCloud.username }}"
+                  password = "{{ .Values.grafanaCloud.prometheusPassword }}"
+                }
+              }
+            }
+
+            // Discover Kubernetes targets for metrics
+            discovery.kubernetes "kubernetes" {
+              role = "pod"
+            }
+
+            discovery.relabel "kubernetes_pod_metrics" {
+              targets = discovery.kubernetes.kubernetes.targets
+              rule {
+                source_labels = ["__meta_kubernetes_pod_annotation_prometheus_io_scrape"]
+                action         = "keep"
+                regex          = "true"
+              }
+              rule {
+                source_labels = ["__meta_kubernetes_pod_annotation_prometheus_io_path"]
+                action         = "replace"
+                target_label   = "__metrics_path__"
+                regex          = "(.+)"
+              }
+              rule {
+                source_labels = ["__address__", "__meta_kubernetes_pod_annotation_prometheus_io_port"]
+                action         = "replace"
+                regex          = "([^:]+)(?::\\d+)?;(\\d+)"
+                replacement    = "$1:$2"
+                target_label   = "__address__"
+              }
+              rule {
+                action       = "labelmap"
+                regex        = "__meta_kubernetes_pod_label_(.+)"
+                replacement  = "pod_label_${1}"
+              }
+              rule {
+                action       = "labelmap"
+                regex        = "__meta_kubernetes_pod_annotation_(.+)"
+                replacement  = "pod_annotation_${1}"
+              }
+              rule {
+                source_labels = ["__meta_kubernetes_namespace"]
+                target_label  = "kubernetes_namespace"
+              }
+              rule {
+                source_labels = ["__meta_kubernetes_pod_name"]
+                target_label  = "kubernetes_pod_name"
+              }
+            }
+
+            prometheus.scrape "kubernetes_metrics" {
+              targets    = discovery.relabel.kubernetes_pod_metrics.output
+              forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+              job_name   = "kubernetes-pods"
+            }
+
+            // Kubelet metrics
+            prometheus.scrape "kubelet" {
+              targets = [{
+                __address__ = "localhost:10250",
+              }]
+              forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+              job_name   = "kubelet"
+              scheme     = "https"
+              tls_config {
+                insecure_skip_verify = true
+              }
+            }
+
+            // Loki log aggregation (logs)
+            loki.write "grafana_cloud" {
+              endpoint {
+                url = "{{ .Values.grafanaCloud.lokiUrl }}"
+                basic_auth {
+                  username = "{{ .Values.grafanaCloud.username }}"
+                  password = "{{ .Values.grafanaCloud.lokiPassword }}"
+                }
+              }
+            }
+
+            discovery.kubernetes "logs" {
+              role = "pod"
+            }
+
+            discovery.relabel "pods" {
+              targets = discovery.kubernetes.logs.targets
+              rule {
+                source_labels = ["__meta_kubernetes_namespace"]
+                target_label  = "namespace"
+              }
+              rule {
+                source_labels = ["__meta_kubernetes_pod_name"]
+                target_label  = "pod"
+              }
+            }
+
+            loki.source.kubernetes "pods" {
+              targets    = discovery.relabel.pods.output
+              forward_to = [loki.write.grafana_cloud.receiver]
+            }
+
+            // OTLP receiver for traces (optional, requires Grafana Cloud Tempo)
+            {{- if .Values.grafanaCloud.tempoUrl }}
+            otelcol.receiver.otlp "default" {
+              grpc {
+                endpoint = "0.0.0.0:4317"
+              }
+              http {
+                endpoint = "0.0.0.0:4318"
+              }
+            }
+
+            otelcol.exporter.otlphttp "grafana_cloud_tempo" {
+              client {
+                endpoint = "{{ .Values.grafanaCloud.tempoUrl }}"
+                headers  = {
+                  "Authorization" = "Bearer {{ .Values.grafanaCloud.tempoPassword }}",
+                }
+              }
+            }
+
+            otelcol.pipeline.traces "default" {
+              receivers = [otelcol.receiver.otlp.default]
+              exporters = [otelcol.exporter.otlphttp.grafana_cloud_tempo]
+            }
+            {{- end }}
+
+        serviceMonitor:
+          enabled: false
+        rbac:
+          create: true
         serviceAccount:
           create: true
 
-  - name: promtail
+  # Agent StatefulSet for node metrics (runs on each node)
+  - name: grafana-agent-node
     namespace: monitoring
     forceNamespace: monitoring
-    chart: grafana/promtail
-    version: 6.17.0
+    chart: grafana/grafana-agent
+    version: 0.29.0
     values:
-      - config:
-          lokiAddress: http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push
+      - agent:
+          mode: flow
+          config: |
+            prometheus.remote_write "grafana_cloud" {
+              endpoint {
+                url = "{{ .Values.grafanaCloud.prometheusUrl }}"
+                basic_auth {
+                  username = "{{ .Values.grafanaCloud.username }}"
+                  password = "{{ .Values.grafanaCloud.prometheusPassword }}"
+                }
+              }
+            }
+
+            prometheus.scrape "node_exporter" {
+              targets = [{
+                __address__ = "localhost:9100",
+              }]
+              forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+              job_name   = "node-exporter"
+            }
+
         serviceMonitor:
-          enabled: true
-
-  - name: tempo
-    namespace: monitoring
-    forceNamespace: monitoring
-    chart: grafana/tempo-distributed
-    version: 1.61.0
-    values:
-      - tempo:
-          repository: grafana/tempo
-          tag: 2.9.0
-        storage:
-          trace:
-            backend: local
-            local:
-              path: /var/tempo/traces
-          admin:
-            path: /var/tempo/admin
-        persistence:
-          enabled: true
-          size: {{ .Values.tempo.storageSize | default "10Gi" }}
-          storageClassName: "standard"  # Local storage
-        metricsGenerator:
-          enabled: true
-          replicas: {{ .Values.tempo.replicas | default 1 }}
-        overrides:
-          defaults:
-            metrics_generator:
-              processors: [service-graphs, span-metrics, local-blocks]
-        memcached:
           enabled: false
-        traces:
-          otlp:
-            grpc:
-              enabled: true
-            http:
-              enabled: true
-
-  # Optional: Thanos for long-term storage (only if S3 is configured)
-  # Uncomment and configure S3 values if needed
-  # - name: thanos
-  #   namespace: monitoring
-  #   forceNamespace: monitoring
-  #   chart: bitnami/thanos
-  #   version: 17.3.1
-  #   values:
-  #     - storage:
-  #         objstore:
-  #           type: s3
-  #           config:
-  #             bucket: "my-bucket"
-  #             endpoint: "s3.amazonaws.com"
-  #             access_key: "{{ .Values.s3.accesskey }}"
-  #             secret_key: "{{ .Values.s3.secretkey }}"
+        rbac:
+          create: true
+        serviceAccount:
+          create: true

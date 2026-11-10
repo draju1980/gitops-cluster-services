@@ -7,7 +7,7 @@ spec:
   description: "Networking services - Cloudflare, Ingress, DNS"
   sourceRepos:
     - "https://github.com/draju1980/gitops-cluster-services.git"
-    - "https://github.com/blessnetwork/helm-charts.git"
+    - "https://github.com/531001/helm-charts.git"
     - "https://helm.strrl.dev"
     - "https://charts.bitnami.com/bitnami"
   destinations:

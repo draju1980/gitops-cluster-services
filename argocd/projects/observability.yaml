@@ -7,7 +7,7 @@ spec:
   description: "Observability stack - metrics, logs, traces, alerting"
   sourceRepos:
     - "https://github.com/draju1980/gitops-cluster-services.git"
-    - "https://github.com/blessnetwork/helm-charts.git"
+    - "https://github.com/531001/helm-charts.git"
     - "https://prometheus-community.github.io/helm-charts"
     - "https://grafana.github.io/helm-charts"
     - "https://charts.bitnami.com/bitnami"

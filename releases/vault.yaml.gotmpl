@@ -47,17 +47,19 @@ releases:
   - name: vault-secretstore
     namespace: external-secrets
     forceNamespace: external-secrets
-    # yamllint disable-line rule:line-length
     chart: "git::https://github.com/531001/helm-charts.git@raw?ref=main"
     needs:
       - external-secrets/external-secrets
     values:
       - resources:
           - apiVersion: v1
-            kind: ServiceAccount
+            kind: Secret
             metadata:
-              name: external-secrets-vault
+              name: external-secrets-vault-token
               namespace: external-secrets
+            type: Opaque
+            stringData:
+              token: {{ requiredEnv "VAULT_TOKEN" | quote }}
 
           - apiVersion: external-secrets.io/v1beta1
             kind: ClusterSecretStore
@@ -66,19 +68,13 @@ releases:
             spec:
               provider:
                 vault:
-                  server: "{{ .Values.externalVault.server }}"
+                  server: {{ requiredEnv "VAULT_ADDR" | quote }}
                   path: >-
                     {{ .Values.externalVault.path | default "secret" }}
                   version: >-
                     {{ .Values.externalVault.version | default "v2" }}
                   auth:
-                    kubernetes:
-                      mountPath: >-
-                        {{
-                          .Values.externalVault.authPath |
-                          default "kubernetes"
-                        }}
-                      role: "{{ .Values.externalVault.authRole }}"
-                      secretRef:
-                        name: external-secrets-vault
-                        key: token
+                    tokenSecretRef:
+                      name: external-secrets-vault-token
+                      namespace: external-secrets
+                      key: token

@@ -1,3 +1,4 @@
+---
 releases:
   - name: argo-cd
     namespace: argo-cd
@@ -106,6 +107,11 @@ releases:
         repoServer:
           extraArgs:
             - --parallelismlimit=10
+          env:
+            - name: VAULT_ADDR
+              value: {{ requiredEnv "VAULT_ADDR" | quote }}
+            - name: VAULT_TOKEN
+              value: {{ requiredEnv "VAULT_TOKEN" | quote }}
           extraContainers:
             - name: helmfile-cmp
               image: travisghansen/argo-cd-helmfile:latest
@@ -116,6 +122,10 @@ releases:
               env:
                 - name: HELMFILE_EXPERIMENTAL
                   value: "true"
+                - name: VAULT_ADDR
+                  value: {{ requiredEnv "VAULT_ADDR" | quote }}
+                - name: VAULT_TOKEN
+                  value: {{ requiredEnv "VAULT_TOKEN" | quote }}
                 - name: OP_SERVICE_ACCOUNT_TOKEN
                   value: {{ .Values.onepassword.apitoken }}
                 - name: GITHUB_TOKEN

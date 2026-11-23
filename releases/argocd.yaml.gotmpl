@@ -13,69 +13,6 @@ releases:
         notifications:
           enabled: {{ .Values.argocd.notifications.enabled }}
           argocdUrl: https://argo-cd.{{ .Values.clusterName }}.{{ .Values.domain }}
-          templates:
-            service.webhook.slack: |
-              url: {{ .Values.slack.argocdWebhook }}
-              headers:
-                - name: Content-Type
-                  value: application/json
-            template.app-out-of-sync: |
-              webhook:
-                slack:
-                  method: POST
-                  body: |
-                    {
-                      "text": "🔄 Application Out of Sync - {{ .Values.clusterName }}",
-                      "attachments": [
-                        {
-                          "color": "warning",
-                          "fields": [
-                            {
-                              "title": "Application",
-                              "value": "{{ `{{.app.metadata.name}}` }}",
-                              "short": true
-                            },
-                            {
-                              "title": "Namespace",
-                              "value": "{{ `{{.app.metadata.namespace}}` }}",
-                              "short": true
-                            },
-                            {
-                              "title": "Sync Status",
-                              "value": "{{ `{{.app.status.sync.status}}` }}",
-                              "short": true
-                            },
-                            {
-                              "title": "Health Status",
-                              "value": "{{ `{{.app.status.health.status}}` }}",
-                              "short": true
-                            },
-                            {
-                              "title": "Repository",
-                              "value": "{{ `{{.app.spec.source.repoURL}}` }}",
-                              "short": false
-                            },
-                            {
-                              "title": "Revision",
-                              "value": "{{ `{{.app.status.sync.revision}}` }}",
-                              "short": true
-                            },
-                            {
-                              "title": "Argo CD Link",
-                              "value": "<https://argo-cd.{{ .Values.clusterName }}.{{ .Values.domain }}/applications/{{ `{{.app.metadata.namespace}}` }}/{{ `{{.app.metadata.name}}` }}|View in Argo CD>",
-                              "short": false
-                            }
-                          ]
-                        }
-                      ]
-                    }
-          triggers:
-            trigger.on-out-of-sync: |
-              - description: Application is out of sync
-                oncePer: app.metadata.name + "." + app.status.sync.status
-                send:
-                  - app-out-of-sync
-                when: app.status.sync.status == "OutOfSync"
         configs:
           secret:
             argocdServerAdminPassword: {{ .Values.argocd.adminpasswordhashed }}
@@ -126,8 +63,6 @@ releases:
                   value: {{ requiredEnv "VAULT_ADDR" | quote }}
                 - name: VAULT_TOKEN
                   value: {{ requiredEnv "VAULT_TOKEN" | quote }}
-                - name: OP_SERVICE_ACCOUNT_TOKEN
-                  value: {{ .Values.onepassword.apitoken }}
                 - name: GITHUB_TOKEN
                   value: {{ .Values.github.accesstoken }}
                 - name: HELMFILE_CACHE_CLEANUP

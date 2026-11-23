@@ -1,0 +1,43 @@
+releases:
+  # Note: Ingress NGINX not needed - all traffic uses Cloudflare Tunnel
+  # See releases/networking.yaml.gotmpl for cloudflare-tunnel-ingress-controller
+
+  - name: external-dns
+    namespace: external-dns
+    forceNamespace: external-dns
+    chart: bitnami/external-dns
+    version: 1.14.5
+    values:
+      - provider: cloudflare
+        cloudflare:
+          apiToken: {{ .Values.cloudflare.apitoken }}
+          email: admin@{{ .Values.domain }}
+          proxied: true
+        policy: sync
+        registry: txt
+        txtOwnerId: {{ .Values.clusterName }}
+        domainFilters:
+          - {{ .Values.domain }}
+        sources:
+          - ingress
+          - service
+        serviceAccount:
+          create: true
+          name: external-dns
+        rbac:
+          create: true
+        resources:
+          limits:
+            cpu: 100m
+            memory: 128Mi
+          requests:
+            cpu: 10m
+            memory: 32Mi
+        metrics:
+          enabled: true
+          service:
+            annotations:
+              prometheus.io/scrape: "true"
+              prometheus.io/port: "7979"
+        logFormat: json
+        logLevel: info

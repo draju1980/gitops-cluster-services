@@ -1,0 +1,80 @@
+---
+releases:
+  - name: external-secrets-crds
+    namespace: external-secrets
+    forceNamespace: external-secrets
+    chart: external-secrets/external-secrets
+    version: 0.9.9
+    values:
+      - installCRDs: true
+    hooks:
+      - events: ["presync"]
+        showlogs: true
+        command: sh
+        args:
+          - "-c"
+          - |
+            kubectl apply --server-side -f \
+              <(helm template external-secrets \
+              external-secrets/external-secrets \
+              --include-crds --set installCRDs=true) \
+              2>/dev/null || true
+
+  - name: external-secrets
+    namespace: external-secrets
+    forceNamespace: external-secrets
+    chart: external-secrets/external-secrets
+    version: 0.9.9
+    values:
+      - installCRDs: false
+        serviceAccount:
+          create: true
+          name: external-secrets
+        webhook:
+          enabled: true
+          port: 10250
+        certController:
+          enabled: true
+        resources:
+          limits:
+            cpu: 100m
+            memory: 128Mi
+          requests:
+            cpu: 10m
+            memory: 64Mi
+
+  # ClusterSecretStore for external Vault integration
+  - name: vault-secretstore
+    namespace: external-secrets
+    forceNamespace: external-secrets
+    chart: "git::https://github.com/531001/helm-charts.git@raw?ref=main"
+    needs:
+      - external-secrets/external-secrets
+    values:
+      - resources:
+          - apiVersion: v1
+            kind: Secret
+            metadata:
+              name: external-secrets-vault-token
+              namespace: external-secrets
+            type: Opaque
+            stringData:
+              token: {{ requiredEnv "VAULT_TOKEN" | quote }}
+
+          - apiVersion: external-secrets.io/v1beta1
+            kind: ClusterSecretStore
+            metadata:
+              name: vault
+            spec:
+              provider:
+                vault:
+                  server: {{ requiredEnv "VAULT_ADDR" | quote }}
+                  path: >-
+                    {{ .Values.externalVault.path | default "secret" }}
+                  version: >-
+                    {{ .Values.externalVault.version | default "v2" }}
+                  auth:
+                    tokenSecretRef:
+                      name: external-secrets-vault-token
+                      namespace: external-secrets
+                      key: token

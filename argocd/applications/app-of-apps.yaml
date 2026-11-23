@@ -1,0 +1,46 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gitops-cluster-services-root
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/draju1980/gitops-cluster-services.git
+    targetRevision: main
+    path: .
+    plugin:
+      name: helmfile
+      env:
+        - name: HELMFILE_EXPERIMENTAL
+          value: "true"
+        - name: HELMFILE_CACHE_CLEANUP
+          value: "true"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 1m
+  ignoreDifferences:
+    - group: "apps"
+      kind: "Deployment"
+      jsonPointers:
+        - /spec/replicas
+    - group: "apps"
+      kind: "StatefulSet"
+      jsonPointers:
+        - /spec/replicas

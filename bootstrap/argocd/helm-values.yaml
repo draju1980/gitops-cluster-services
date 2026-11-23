@@ -1,0 +1,129 @@
+# ArgoCD Helm Values for Bootstrap Installation
+# This is the minimal values file used to bootstrap ArgoCD in the cluster
+# After bootstrap, ArgoCD will self-manage via the app-of-apps pattern
+
+global:
+  logging:
+    level: info
+  domain: "argo-cd.CLUSTER_NAME.bls.dev"
+
+configs:
+  params:
+    server:
+      insecure: true
+
+server:
+  extraArgs:
+    - --insecure
+  service:
+    type: ClusterIP
+  ingress:
+    enabled: false  # Will be configured by app-of-apps
+
+repoServer:
+  extraArgs:
+    - --parallelismlimit=10
+
+  # Helmfile CMP Plugin Sidecar
+  extraContainers:
+    - name: helmfile-cmp
+      image: travisghansen/argo-cd-helmfile:latest
+      command: ["/var/run/argocd/argocd-cmp-server"]
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+      env:
+        - name: HELMFILE_EXPERIMENTAL
+          value: "true"
+        - name: HELMFILE_CACHE_CLEANUP
+          value: "true"
+        - name: GITHUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: argocd-bootstrap-secrets
+              key: github-token
+      volumeMounts:
+        - name: var-files
+          mountPath: /var/run/argocd
+        - name: plugins
+          mountPath: /home/argocd/cmp-server/plugins
+        - name: tmp
+          mountPath: /tmp
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+
+  # CMP Plugin Configuration
+  plugins:
+    helmfile:
+      discover:
+        glob: "helmfile.yaml"
+        glob: "helmfile.yaml.gotmpl"
+      generate:
+        command:
+          - bash
+          - -c
+          - |
+            helmfile -f ${ARGOCD_APP_SOURCE_PATH}/helmfile.yaml.gotmpl \
+              -e ${ENVIRONMENT:-dev} \
+              template \
+              --show-secrets
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+controller:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+dex:
+  enabled: false
+
+notifications:
+  enabled: false  # Will be configured by app-of-apps
+
+redis:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+redis-ha:
+  enabled: false
+
+# RBAC Configuration
+rbac:
+  create: true
+  scopes: "[groups]"
+  policy.default: role:readonly
+  policy.csv: |
+    # Grant admin role to argocd admins group
+    g, argocd-admins, role:admin
+
+serviceAccount:
+  create: true
+  name: argocd-server
+
+# Application defaults
+application:
+  instanceLabelKey: argocd.argoproj.io/instance
+
+# Do not auto-create default application project
+defaultProject: default

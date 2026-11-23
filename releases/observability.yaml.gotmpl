@@ -1,0 +1,209 @@
+---
+releases:
+  - name: metrics-server
+    namespace: kube-system
+    forceNamespace: kube-system
+    chart: metrics-server/metrics-server
+    version: 3.13.0
+
+  # Grafana Agent for metrics and logs collection to Grafana Cloud
+  - name: grafana-agent
+    namespace: monitoring
+    forceNamespace: monitoring
+    chart: grafana/grafana-agent
+    version: 0.29.0
+    values:
+      - agent:
+          mode: flow
+          configMap:
+            create: true
+          config: |
+            // Grafana Agent Flow configuration for Grafana Cloud integration
+            logging {
+              level  = "{{ .Values.agent.logLevel | default "info" }}"
+              format = "json"
+            }
+
+            // Prometheus remote write (metrics)
+            prometheus.remote_write "grafana_cloud" {
+              endpoint {
+                url = "{{ .Values.grafanaCloud.prometheusUrl }}"
+                basic_auth {
+                  username = "{{ .Values.grafanaCloud.username }}"
+                  password = "{{ .Values.grafanaCloud.prometheusPassword }}"
+                }
+              }
+            }
+
+            // Discover Kubernetes targets for metrics
+            discovery.kubernetes "kubernetes" {
+              role = "pod"
+            }
+
+            discovery.relabel "kubernetes_pod_metrics" {
+              targets = discovery.kubernetes.kubernetes.targets
+              rule {
+                source_labels = [
+                  "__meta_kubernetes_pod_annotation_prometheus_io_scrape"
+                ]
+                action = "keep"
+                regex  = "true"
+              }
+              rule {
+                source_labels = [
+                  "__meta_kubernetes_pod_annotation_prometheus_io_path"
+                ]
+                action       = "replace"
+                target_label = "__metrics_path__"
+                regex        = "(.+)"
+              }
+              rule {
+                source_labels = [
+                  "__address__",
+                  "__meta_kubernetes_pod_annotation_prometheus_io_port"
+                ]
+                action       = "replace"
+                regex        = "([^:]+)(?::\\d+)?;(\\d+)"
+                replacement  = "$1:$2"
+                target_label = "__address__"
+              }
+              rule {
+                action      = "labelmap"
+                regex       = "__meta_kubernetes_pod_label_(.+)"
+                replacement = "pod_label_${1}"
+              }
+              rule {
+                action      = "labelmap"
+                regex       = "__meta_kubernetes_pod_annotation_(.+)"
+                replacement = "pod_annotation_${1}"
+              }
+              rule {
+                source_labels = ["__meta_kubernetes_namespace"]
+                target_label  = "kubernetes_namespace"
+              }
+              rule {
+                source_labels = ["__meta_kubernetes_pod_name"]
+                target_label  = "kubernetes_pod_name"
+              }
+            }
+
+            prometheus.scrape "kubernetes_metrics" {
+              targets    = discovery.relabel.kubernetes_pod_metrics.output
+              forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+              job_name   = "kubernetes-pods"
+            }
+
+            // Kubelet metrics
+            prometheus.scrape "kubelet" {
+              targets = [{
+                __address__ = "localhost:10250",
+              }]
+              forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+              job_name   = "kubelet"
+              scheme     = "https"
+              tls_config {
+                insecure_skip_verify = true
+              }
+            }
+
+            // Loki log aggregation (logs)
+            loki.write "grafana_cloud" {
+              endpoint {
+                url = "{{ .Values.grafanaCloud.lokiUrl }}"
+                basic_auth {
+                  username = "{{ .Values.grafanaCloud.username }}"
+                  password = "{{ .Values.grafanaCloud.lokiPassword }}"
+                }
+              }
+            }
+
+            discovery.kubernetes "logs" {
+              role = "pod"
+            }
+
+            discovery.relabel "pods" {
+              targets = discovery.kubernetes.logs.targets
+              rule {
+                source_labels = ["__meta_kubernetes_namespace"]
+                target_label  = "namespace"
+              }
+              rule {
+                source_labels = ["__meta_kubernetes_pod_name"]
+                target_label  = "pod"
+              }
+            }
+
+            loki.source.kubernetes "pods" {
+              targets    = discovery.relabel.pods.output
+              forward_to = [loki.write.grafana_cloud.receiver]
+            }
+
+            // OTLP receiver for traces (optional, requires Grafana Cloud Tempo)
+            {{- if .Values.grafanaCloud.tempoUrl }}
+            otelcol.receiver.otlp "default" {
+              grpc {
+                endpoint = "0.0.0.0:4317"
+              }
+              http {
+                endpoint = "0.0.0.0:4318"
+              }
+            }
+
+            otelcol.exporter.otlphttp "grafana_cloud_tempo" {
+              client {
+                endpoint = "{{ .Values.grafanaCloud.tempoUrl }}"
+                headers  = {
+                  "Authorization" = (
+                    "Bearer " + "{{ .Values.grafanaCloud.tempoPassword }}"
+                  ),
+                }
+              }
+            }
+
+            otelcol.pipeline.traces "default" {
+              receivers = [otelcol.receiver.otlp.default]
+              exporters = [otelcol.exporter.otlphttp.grafana_cloud_tempo]
+            }
+            {{- end }}
+
+        serviceMonitor:
+          enabled: false
+        rbac:
+          create: true
+        serviceAccount:
+          create: true
+
+  # Agent StatefulSet for node metrics (runs on each node)
+  - name: grafana-agent-node
+    namespace: monitoring
+    forceNamespace: monitoring
+    chart: grafana/grafana-agent
+    version: 0.29.0
+    values:
+      - agent:
+          mode: flow
+          config: |
+            prometheus.remote_write "grafana_cloud" {
+              endpoint {
+                url = "{{ .Values.grafanaCloud.prometheusUrl }}"
+                basic_auth {
+                  username = "{{ .Values.grafanaCloud.username }}"
+                  password = "{{ .Values.grafanaCloud.prometheusPassword }}"
+                }
+              }
+            }
+
+            prometheus.scrape "node_exporter" {
+              targets = [{
+                __address__ = "localhost:9100",
+              }]
+              forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+              job_name   = "node-exporter"
+            }
+
+        serviceMonitor:
+          enabled: false
+        rbac:
+          create: true
+        serviceAccount:
+          create: true

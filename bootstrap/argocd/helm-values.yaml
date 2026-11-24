@@ -42,6 +42,17 @@ repoServer:
             secretKeyRef:
               name: argocd-bootstrap-secrets
               key: github-token
+        # Vault integration for secret management
+        - name: VAULT_ADDR
+          valueFrom:
+            secretKeyRef:
+              name: argocd-vault-config
+              key: vault-addr
+        - name: VAULT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: argocd-vault-config
+              key: vault-token
       volumeMounts:
         - name: var-files
           mountPath: /var/run/argocd

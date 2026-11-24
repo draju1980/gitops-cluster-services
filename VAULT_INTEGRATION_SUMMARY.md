@@ -128,16 +128,18 @@ secret/gitops/prod/grafana-cloud
 
 ## Deployment Requirements
 
-### Environment Variables (from ArgoCD)
+### Bootstrap Phase (One-Time, Admin Only)
+Environment variables passed during initial ArgoCD installation:
 ```
-VAULT_ADDR=http://vault.example.com:8200
-VAULT_TOKEN=hvs.your-token
+VAULT_ADDR=http://vault.example.com:8200          # ← Only needed once during bootstrap
+VAULT_TOKEN=hvs.your-token                         # ← Only needed once during bootstrap
 CLUSTER_NAME=dev-cluster
 CLUSTER_DOMAIN=example.com
 ENVIRONMENT=dev
 ```
 
-### Bootstrap Secrets (Kubernetes)
+### After Bootstrap (Team Members - No Vault Credentials Needed!)
+Kubernetes secrets automatically created and managed:
 ```
 argocd-bootstrap-secrets:
   - github-token
@@ -145,10 +147,15 @@ argocd-bootstrap-secrets:
   - cloudflare-account-id
   - argocd-admin-password-hash
 
-argocd-vault-config:
-  - vault-addr
-  - vault-token
+argocd-vault-config:                               # ← Stored securely in K8s
+  - vault-addr        (retrieved from env vars during bootstrap)
+  - vault-token       (retrieved from env vars during bootstrap)
 ```
+
+**Key Point:** Once `argocd-vault-config` secret is created in Kubernetes, team members only need:
+- kubectl access to the cluster
+- Git access to the repository
+- NO Vault credentials needed!
 
 ## Migration Steps
 

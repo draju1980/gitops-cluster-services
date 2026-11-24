@@ -2,12 +2,15 @@
 
 This guide walks you through setting up Grafana Cloud monitoring for your Kubernetes cluster using HashiCorp Vault for secret management and ArgoCD for GitOps deployment.
 
-## 5-Minute Setup
+## 5-Minute Setup (One-Time Bootstrap)
 
-### 1. Store Credentials in Vault
+> **Note:** This bootstrap process is run ONCE to initialize ArgoCD with Vault integration.
+> After bootstrap, ArgoCD stores Vault credentials internally - other team members don't need VAULT_ADDR/VAULT_TOKEN.
+
+### 1. Store Credentials in Vault (Admin)
 
 ```bash
-# Set your Vault connection
+# Set your Vault connection (one-time)
 export VAULT_ADDR="http://127.0.0.1:8200"
 export VAULT_TOKEN="hvs.your-token"
 
@@ -31,31 +34,43 @@ k3d cluster create dev-cluster
 kind create cluster --name dev-cluster
 ```
 
-### 3. Run Bootstrap Script
+### 3. Run Bootstrap Script (Admin Only)
 
 ```bash
 # Navigate to project
 cd /Users/mdraju/labs/gitops-cluster-services
 
-# Run setup script
+# Run setup script with Vault credentials
+# ⚠️  Only the cluster admin needs to run this ONCE
 export VAULT_ADDR="http://127.0.0.1:8200"
 export VAULT_TOKEN="hvs.your-token"
 
 ./bootstrap/setup-vault-integration.sh argo-cd
+
+# This creates the argocd-vault-config secret in Kubernetes
+# After this, Vault credentials are stored securely in K8s
 ```
 
-### 4. Install ArgoCD
+### 4. Install ArgoCD (Admin Only)
 
 ```bash
 helm repo add argoproj https://argoproj.github.io/argo-helm
 helm repo update
 
+# This deployment reads Vault credentials from argocd-vault-config secret
 helm install argocd argoproj/argo-cd \
   -n argo-cd \
   -f bootstrap/argocd/helm-values.yaml
 
 kubectl rollout status deployment/argocd-server -n argo-cd
 ```
+
+### ✅ Vault Integration Complete!
+Once deployed, ArgoCD's helmfile plugin automatically:
+- Reads VAULT_ADDR/VAULT_TOKEN from the `argocd-vault-config` secret
+- Authenticates with Vault during helmfile rendering
+- Pulls Grafana Cloud credentials on-demand
+- Other team members can now deploy without Vault credentials!
 
 ### 5. Create Bootstrap Secrets
 

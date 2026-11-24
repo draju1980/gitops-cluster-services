@@ -57,6 +57,14 @@ Before starting, ensure you have:
 
 ## Bootstrap Process
 
+> **Important:** This bootstrap process is a **one-time operation** run by a cluster administrator.
+> 
+> After bootstrap:
+> - Vault credentials are stored in Kubernetes secrets (`argocd-vault-config`)
+> - Other team members **do not need** VAULT_ADDR or VAULT_TOKEN
+> - They only need kubectl access to the cluster
+> - ArgoCD's helmfile plugin automatically retrieves Vault credentials from the K8s secret
+
 ### Step 1: Create Kubernetes Cluster (if needed)
 
 ```bash

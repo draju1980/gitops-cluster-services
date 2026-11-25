@@ -1,26 +1,14 @@
 repositories:
-- name: prometheus-community
-  url: https://prometheus-community.github.io/helm-charts
 - name: argoproj
   url: https://argoproj.github.io/argo-helm
-- name: strrl.dev
-  url: https://helm.strrl.dev
-- name: grafana
-  url: https://grafana.github.io/helm-charts
-- name: metrics-server
-  url: https://kubernetes-sigs.github.io/metrics-server/
-- name: bitnami
-  url: https://charts.bitnami.com/bitnami
-- name: hashicorp
-  url: https://helm.releases.hashicorp.com
 - name: external-secrets
   url: https://charts.external-secrets.io
-- name: kyverno
-  url: https://kyverno.github.io/kyverno/
-- name: falcosecurity
-  url: https://falcosecurity.github.io/charts
-- name: aquasecurity
-  url: https://aquasecurity.github.io/helm-charts/
+- name: metrics-server
+  url: https://kubernetes-sigs.github.io/metrics-server/
+- name: prometheus-community
+  url: https://prometheus-community.github.io/helm-charts
+- name: strrl.dev
+  url: https://helm.strrl.dev
 
 ---
 # Environment-agnostic Helmfile

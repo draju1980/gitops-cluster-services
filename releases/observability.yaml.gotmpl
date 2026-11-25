@@ -58,68 +58,8 @@ releases:
                     key: gitops/{{ .Values.environment | default "dev" }}/grafana-cloud
                     property: url
 
-  # Grafana k8s-monitoring for comprehensive Kubernetes observability
-  - name: grafana-cloud-k8s-monitoring
-    namespace: monitoring
-    forceNamespace: monitoring
-    chart: grafana/k8s-monitoring
-    version: 1.8.0
-    needs:
-      - monitoring/monitoring-secretstore
-    values:
-      - cluster:
-          name: {{ .Values.clusterName | quote }}
-
-        # Remote write configuration for Grafana Cloud Prometheus
-        remoteWrite:
-          - url: https://prometheus-blocks-prod-us-central1.grafana.net/api/prom/push
-            basicAuth:
-              username:
-                name: grafana-cloud-credentials
-                key: username
-              password:
-                name: grafana-cloud-credentials
-                key: password
-
-        # Grafana Loki log aggregation configuration
-        logs:
-          enabled: true
-          cluster_events:
-            enabled: true
-          pod_logs:
-            enabled: true
-
-        loki:
-          enabled: true
-          clients:
-            - url: https://logs-prod-us-central1.grafana.net/loki/api/v1/push
-              basicAuth:
-                username:
-                  name: grafana-cloud-credentials
-                  key: username
-                password:
-                  name: grafana-cloud-credentials
-                  key: password
-
-        # Alloy configuration for metrics and traces collection
-        alloy:
-          remoteConfig:
-            enabled: false  # Set to true if using Grafana Agent config management
-
-        # Collectors configuration
-        collectors:
-          node-exporter:
-            enabled: true
-          kube-state-metrics:
-            enabled: true
-          opencost:
-            enabled: false
-          prometheus-operator:
-            enabled: false
-
-        # Service discovery presets
-        logging:
-          level: {{ .Values.agent.logLevel | default "info" | quote }}
+  # Grafana Cloud Agent is used for all observability
+  # Agent scrapes all Kubernetes and application metrics/logs and sends to Grafana Cloud
 
   # Optional: Prometheus Operator for advanced monitoring scenarios
   - name: kube-prometheus-stack

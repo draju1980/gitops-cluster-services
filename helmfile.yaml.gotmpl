@@ -86,20 +86,26 @@ environments:
 ---
 helmfiles:
   - path: releases/namespaces.yaml.gotmpl
+    inherits: [repositories]
     values:
       - {{ .Values | toYaml | nindent 8 }}
   - path: releases/vault.yaml.gotmpl
+    inherits: [repositories]
     values:
       - {{ .Values | toYaml | nindent 8 }}
   - path: releases/ingress.yaml.gotmpl
+    inherits: [repositories]
     values:
       - {{ .Values | toYaml | nindent 8 }}
   - path: releases/observability.yaml.gotmpl
+    inherits: [repositories]
     values:
       - {{ .Values | toYaml | nindent 8 }}
   - path: releases/networking.yaml.gotmpl
+    inherits: [repositories]
     values:
       - {{ .Values | toYaml | nindent 8 }}
   - path: releases/argocd.yaml.gotmpl
+    inherits: [repositories]
     values:
       - {{ .Values | toYaml | nindent 8 }}

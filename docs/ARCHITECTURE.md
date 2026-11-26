@@ -1,310 +1,405 @@
-# GitOps Platform Services Architecture
+# Cluster Services Architecture
 
-## Overview
+## Design Philosophy
 
-This repository manages Kubernetes cluster-wide platform services using a GitOps approach. It implements the **App of Apps pattern** with ArgoCD and **Helmfile** as the deployment orchestrator.
+**Minimal**: Only 4 essential releases; no forced dependencies  
+**Modular**: Deploy once, use everywhere with environment variables  
+**Cloud-Native**: Leverage managed services (Grafana Cloud) instead of local deployments  
+**Secure**: Zero secrets in git; all via environment variables  
+**Operational**: Low resource usage; easy to maintain and troubleshoot  
 
-## Technology Stack
-
-### GitOps & Orchestration
-- **ArgoCD**: Declarative GitOps management
-- **Helmfile**: Helm release orchestration and environment management
-- **App of Apps Pattern**: Hierarchical application management
-
-### Secrets & Configuration
-- **HashiCorp Vault Cloud**: Centralized secrets management
-- **External Secrets Operator (ESO)**: Kubernetes-native secret synchronization
-- **1Password**: Secret backend integration
-
-### Networking
-- **Cloudflare Tunnel**: Secure cluster access without public IPs
-- **Cloudflare DNS**: External DNS management
-- **Cert Manager**: TLS certificate lifecycle management
-- **Ingress NGINX**: Ingress controller
-
-### Observability
-- **Prometheus**: Metrics collection and storage
-- **Grafana Cloud**: Managed visualization and alerting
-- **Grafana Alloy**: Telemetry collector (logs, metrics, traces)
-- **Loki**: Log aggregation
-- **Tempo**: Distributed tracing
-- **Thanos**: Long-term metric storage and querying
-
-### Security
-- **Kyverno**: Kubernetes policy engine (Pod Security, Network Policies)
-- **Falco**: Runtime security and threat detection
-- **Trivy Operator**: Container image and configuration scanning
-
-## Architecture Decision: ArgoCD + Helmfile Integration
-
-### The Problem
-ArgoCD cannot natively render Helmfile syntax. Without special handling, two approaches create conflicts:
-1. CI renders Helmfile → commits manifests → ArgoCD syncs (loses Helmfile benefits)
-2. ArgoCD and CI both try to apply changes (bidirectional sync conflicts)
-
-### The Solution: Config Management Plugin
-
-We use **ArgoCD Config Management Plugin (CMP)** with the `helmfile` plugin sidecar:
+## System Overview
 
 ```
-User commits to git
-    ↓
-ArgoCD detects change
-    ↓
-CMP sidecar: helmfile -e <env> template
-    ↓
-Generated manifests
-    ↓
-ArgoCD applies with auto-sync, prune, self-heal
+Kubernetes Cluster
+│
+├─ Namespaces
+│  ├─ argo-cd       (GitOps orchestration)
+│  ├─ monitoring    (Observability collection)
+│  └─ cloudflare    (Secure ingress)
+│
+├─ Observability
+│  └─ Grafana Alloy Agent
+│     ├─ Metrics  → Grafana Cloud Prometheus
+│     ├─ Logs     → Grafana Cloud Loki
+│     └─ Traces   → Grafana Cloud Tempo
+│
+├─ Networking
+│  └─ Cloudflare Tunnel
+│     └─ Ingress through Cloudflare
+│
+└─ GitOps
+   └─ ArgoCD
+      └─ Declarative management via git
 ```
 
-**Benefits:**
-- ✅ Single source of truth (Helmfile)
-- ✅ Environment-specific values via `helmfile.d/`
-- ✅ Full ArgoCD features (auto-sync, prune, self-heal, notifications)
-- ✅ No CI/CD conflicts
+## 4 Essential Helm Releases
 
-**Implementation:**
-- ArgoCD repoServer includes `travisghansen/argo-cd-helmfile` CMP sidecar
-- Each Application references this plugin
-- Plugin env vars: `HELMFILE_EXPERIMENTAL=true`, `HELMFILE_CACHE_CLEANUP=true`
+### 1. Namespaces
+**Chart**: Custom (via git)  
+**Purpose**: Creates monitoring, argo-cd, cloudflare namespaces  
+**Resources**: 3 Namespace objects  
+**Dependency**: First (required by others)
 
-## Repository Structure
+### 2. Observability  
+**Chart**: grafana/alloy  
+**Purpose**: Collects metrics, logs, and traces from cluster  
+**Components**:
+- Grafana Alloy Agent (DaemonSet-like)
+- Kubernetes Secret for Grafana Cloud credentials
+- ServiceAccount with minimal RBAC
 
-```
-gitops-cluster-services/
-├── bootstrap/                 # Bootstrap ArgoCD and initial setup
-│   └── argocd/
-│       ├── namespace.yaml
-│       ├── helm-values.yaml
-│       └── install.sh
-│
-├── argocd/                    # ArgoCD configuration
-│   ├── projects/              # AppProjects with RBAC
-│   │   ├── platform.yaml
-│   │   ├── security.yaml
-│   │   ├── observability.yaml
-│   │   └── networking.yaml
-│   └── applications/          # Application manifests
-│       └── app-of-apps.yaml   # Root application
-│
-├── cloudflare/                # Cloudflare tunnel & DNS
-│   ├── tunnel.yaml
-│   └── external-dns.yaml
-│
-├── vault/                     # Vault integration
-│   ├── auth.yaml              # Kubernetes auth
-│   ├── secretstore.yaml       # ClusterSecretStore
-│   └── externalsecret.yaml    # Example ExternalSecret
-│
-├── observability/             # Monitoring & logging
-│   ├── grafana-alloy/
-│   ├── dashboards/
-│   ├── alerts/
-│   └── otel/
-│
-├── security/                  # Security policies
-│   ├── kyverno/
-│   │   ├── policies/
-│   │   └── exceptions.yaml
-│   ├── falco/
-│   ├── trivy/
-│   └── network-policies/
-│
-├── ingress/                   # Ingress & TLS
-│   ├── ingress-nginx.yaml
-│   └── cert-manager.yaml
-│
-├── helmfile.yaml.gotmpl       # Root helmfile
-├── helmfile.d/                # Environment-specific values
-│   ├── dev.yaml
-│   ├── staging.yaml
-│   └── prod.yaml
-│
-├── releases/                  # Helmfile releases
-│   ├── namespaces.yaml.gotmpl
-│   ├── argocd.yaml.gotmpl
-│   ├── networking.yaml.gotmpl
-│   ├── observability.yaml.gotmpl
-│   ├── security.yaml.gotmpl
-│   ├── vault.yaml.gotmpl
-│   └── ingress.yaml.gotmpl
-│
-└── docs/
-    ├── ARCHITECTURE.md
-    ├── BOOTSTRAP.md
-    ├── OPERATING_MODEL.md
-    └── CONVENTIONS.md
-```
+**Capabilities**:
+- Discovers and scrapes all Kubernetes metrics
+- Collects container logs from all pods
+- Receives OTLP traces on ports 4317 (gRPC) and 4318 (HTTP)
+- Sends to Grafana Cloud (fully managed, zero local storage)
 
-## Namespaces and ArgoCD Projects
+**Resources**:
+- CPU: 200m request, 500m limit
+- Memory: 256Mi request, 512Mi memory limit
+- Runs with system-cluster-critical priority
 
-| Component | Namespace | Project | Charts | Sync Wave |
-|-----------|-----------|---------|--------|-----------|
-| Namespaces | - | default | raw/generic | 0 |
-| ArgoCD | argocd | platform | argoproj/argo-cd | 0 |
-| Cert Manager CRDs | cert-manager | security | jetstack/cert-manager-crds | 1 |
-| Cert Manager | cert-manager | security | jetstack/cert-manager | 2 |
-| External Secrets CRDs | external-secrets | vault | external-secrets/external-secrets | 1 |
-| External Secrets | external-secrets | vault | external-secrets/external-secrets | 2 |
-| Vault Integration | external-secrets | vault | raw/generic | 3 |
-| Kyverno CRDs | kyverno | security | kyverno/kyverno-crds | 1 |
-| Kyverno | kyverno | security | kyverno/kyverno | 2 |
-| Kyverno Policies | kyverno | security | raw/generic | 3 |
-| Falco | falco | security | falcosecurity/falco | 3 |
-| Trivy | trivy-system | security | aquasecurity/trivy-operator | 3 |
-| Prometheus Stack | monitoring | observability | prometheus-community/kube-prometheus-stack | 3 |
-| Loki | monitoring | observability | grafana/loki | 3 |
-| Tempo | monitoring | observability | grafana/tempo-distributed | 3 |
-| Grafana Alloy | monitoring | observability | grafana/k8s-monitoring | 4 |
-| Thanos | monitoring | observability | bitnami/thanos | 3 |
-| Ingress NGINX | ingress-nginx | networking | ingress-nginx/ingress-nginx | 3 |
-| Cloudflare Tunnel | cloudflare | networking | strrl.dev/cloudflare-tunnel-ingress-controller | 3 |
-| External DNS | external-dns | networking | bitnami/external-dns | 3 |
-| Metrics Server | kube-system | platform | metrics-server/metrics-server | 0 |
+### 3. Networking
+**Chart**: strrl.dev/cloudflare-tunnel-ingress-controller  
+**Purpose**: Secure ingress without public IPs  
+**Components**:
+- Cloudflare Tunnel Controller
+- Cloudflared daemon (configurable replicas)
+- ServiceMonitor for metrics
 
-**Sync Wave Strategy:**
-- **Wave 0**: Core infrastructure (namespaces, metrics-server)
-- **Wave 1**: CRD-only releases (cert-manager-crds, external-secrets-crds, kyverno-crds)
-- **Wave 2**: Operators that use CRDs from Wave 1
-- **Wave 3**: Applications and policy resources
-- **Wave 4**: Collectors and final observability components
+**How it works**:
+- Establishes outbound-only tunnel to Cloudflare
+- Routes all ingress through Cloudflare
+- No TLS management needed
+- Configurable replicas for HA (dev: 1, staging: 2, prod: 3)
 
-## Production-Ready Features
+### 4. ArgoCD
+**Chart**: argoproj/argo-cd  
+**Purpose**: GitOps continuous deployment  
+**Components**:
+- ArgoCD Server (API + UI)
+- ArgoCD RepoServer with Helmfile CMP plugin
+- ArgoCD Application Controller
+- ArgoCD ServiceMonitor
 
-### Sync Configuration
-- **Auto Sync**: Enabled for platform services, manual for critical infrastructure
-- **Self Heal**: Enabled - ArgoCD corrects drift automatically
-- **Prune**: Enabled - removes resources deleted from git
-- **ServerSideApply**: Enabled for Kyverno (large CRDs)
-- **SkipDryRunOnMissingResource**: Enabled for policy resources (depends on CRDs from earlier waves)
+**Features**:
+- Monitors GitHub repository
+- Renders Helmfile templates automatically
+- Auto-syncs on git changes
+- Self-heals if manual changes made
+- Prunes deleted resources
 
-### Security Policies
-- Privileged namespaces: `kube-system`, `argocd`, `cert-manager`, `external-secrets`, `kyverno`, `falco`, `trivy-system`
-- PSS enforce labels: Applied to privileged namespaces only
-- Default-deny NetworkPolicies: Allow API server webhooks for mutation/validation
-- Secret zero: No real tokens in git; only placeholders for out-of-band setup
+## Helm Repositories
 
-### Kyverno
-- **Audit Mode** in dev (logs violations)
-- **Enforce Mode** in prod (blocks violations)
-- **Exclusions**: kube-system, argocd, kyverno namespaces excluded
-- **Mutation**: Image registry rewrite, image pull policy enforcement
-- **Validation**: Pod security standards, resource limits, network policies
+**3 repositories total** (minimal attack surface):
 
-### Vault Integration
-- **Kubernetes Auth**: Cluster API TokenReview (supports private clusters via JWT)
-- **Namespace-level Secrets**: Each app namespace has its own SecretStore
-- **Rotation**: ESO syncs secrets continuously
-- **Zero Trust**: No secrets in git; only SecretStore references
-
-### Networking
-- **Cloudflare Tunnel**: Exposes cluster without public ingress IPs
-- **External DNS**: Cloudflare manages DNS records automatically
-- **Cert Manager**: Automated TLS cert management via Let's Encrypt
-- **Network Policies**: Explicit allow-lists; API server webhooks whitelisted
-
-### Observability
-- **Metrics**: Prometheus scrapes Kube API, kubelets, applications
-- **Logs**: Promtail → Loki, forward to Grafana Cloud
-- **Traces**: Prometheus OTLP receiver, Tempo backend
-- **Long-term Storage**: Thanos queries Prometheus + object storage
-- **Alloy**: Metrics, logs, traces → Grafana Cloud
-
-## Deployment Workflow
-
-```
-Developer commits to gitops-cluster-services
-    ↓
-GitHub webhook → ArgoCD detects change
-    ↓
-ArgoCD pulls latest commit
-    ↓
-CMP plugin runs: helmfile -e dev|staging|prod template
-    ↓
-Generated YAML passed to kubectl apply (server-side)
-    ↓
-Auto-sync: ArgoCD applies changes immediately
-    ↓
-Self-heal: ArgoCD corrects any drift
-    ↓
-Prune: Removed resources deleted from git
-    ↓
-Notifications: Slack alerts on sync status
-```
-
-## Bootstrap Process
-
-See [BOOTSTRAP.md](./BOOTSTRAP.md) for detailed bootstrap steps.
-
-## Operating Model
-
-See [OPERATING_MODEL.md](./OPERATING_MODEL.md) for day-2 operations, troubleshooting, and maintenance.
-
-## Secrets Management
-
-### Secret Zero
-At bootstrap, create manually in cluster:
-- 1Password API token (for Helmfile secret injection)
-- GitHub token (for ArgoCD repo access)
-- Vault Kubernetes auth JWT
-
-After bootstrap, all secrets managed by:
-- 1Password (Helmfile {{ fetchSecretValue }})
-- Vault (ExternalSecret resources)
-
-### ExternalSecret Pattern
 ```yaml
-apiVersion: external-secrets.io/v1
-kind: ExternalSecret
-metadata:
-  name: app-secrets
-  namespace: app-namespace
-spec:
-  refreshInterval: 1h
-  secretStoreRef:
-    name: vault
-    kind: ClusterSecretStore
-  target:
-    name: app-secrets
-    creationPolicy: Owner
-  data:
-    - secretKey: api-key
-      remoteRef:
-        key: secret/data/app/api-key
+repositories:
+  - name: argoproj
+    url: https://argoproj.github.io/argo-helm
+    
+  - name: grafana
+    url: https://grafana.github.io/helm-charts
+    
+  - name: strrl.dev
+    url: https://helm.strrl.dev
 ```
 
-## Validation & Testing
+## Environment Variable Strategy
 
-All changes must pass:
-1. **yamllint**: YAML syntax validation
-2. **helmfile -e {env} template**: Environment-specific rendering
-3. **kubeconform**: Kubernetes schema validation
-4. **Kyverno policy checks**: Dry-run validation (Audit mode in dev)
+**Key Principle**: cluster-services is a reusable module
 
-CI/CD pipeline validates on every commit; manual validation before production sync.
+Same code deploys to:
+- Different organizations (Team A vs Team B)
+- Different clusters (dev, staging, prod)
+- Different Grafana Cloud instances (US region vs EU region)
+- Different security postures (1 replica vs 3 replicas HA)
 
-## Troubleshooting
+**Solution**: All configuration via environment variables
 
-### ArgoCD Application Stuck "Progressing"
-- Check CMP plugin logs: `kubectl logs -n argocd deployment/argocd-repo-server -c helmfile-cmp`
-- Verify helmfile syntax: `helmfile -e <env> template --show-secrets`
-- Check image pull secrets in argo-cd namespace
+```bash
+# Team A (Grafana instance in US)
+export GRAFANA_CLOUD_PROM_URL="https://prometheus-prod-11-prod-us-central1.grafana.net/api/prom/push"
+export GRAFANA_CLOUD_PROM_USER="123456"
+helmfile sync
 
-### Vault Auth Failing
-- Verify JWT issuer: `kubectl -n external-secrets get clusterSecretStore -o yaml`
-- Check Vault Kubernetes auth policy
-- Ensure cluster API is reachable from Vault (or configure JWT issuer)
+# Team B (Grafana instance in EU)
+export GRAFANA_CLOUD_PROM_URL="https://prometheus-prod-22-prod-eu-west-1.grafana.net/api/prom/push"
+export GRAFANA_CLOUD_PROM_USER="654321"
+helmfile sync
+```
 
-### Kyverno Blocking Deployments
-- Check policy audit logs: `kubectl get policyreport -A`
-- Verify exemptions in policies/exceptions.yaml
-- Test in Audit mode first before Enforce
+## Data Flows
+
+### Metrics Collection
+
+```
+Kubernetes Cluster Metrics
+  ↓
+Alloy discovers: pods, nodes, services
+  ↓
+Alloy scrapes Prometheus format
+  ↓
+Metric relabeling (drop high-cardinality)
+  ↓
+Add cluster=<CLUSTER_NAME> label
+  ↓
+Prometheus remote write to Grafana Cloud
+  ↓
+Visualize in Grafana Cloud dashboards
+```
+
+### Log Collection
+
+```
+Container stdout/stderr
+  ↓
+Alloy reads from /var/log/containers/
+  ↓
+Label processing (drop noisy Kubernetes labels)
+  ↓
+Loki API push to Grafana Cloud
+  ↓
+Search/explore in Grafana Cloud
+```
+
+### Trace Collection
+
+```
+Application (OTLP client)
+  ↓
+Sends to Alloy port 4317 (gRPC) or 4318 (HTTP)
+  ↓
+Alloy OTLP receiver
+  ↓
+OTLP exporter with basic auth
+  ↓
+Tempo API endpoint in Grafana Cloud
+  ↓
+Trace visualization in Grafana Cloud
+```
+
+### GitOps Deployment
+
+```
+Developer pushes to GitHub
+  ↓
+GitHub webhook → ArgoCD
+  ↓
+ArgoCD pulls repository
+  ↓
+CMP plugin: helmfile template --environment <env>
+  ↓
+Helmfile renders manifests with environment values
+  ↓
+ArgoCD compares with current cluster state
+  ↓
+If drift detected → auto-sync
+  ↓
+kubectl apply generated manifests
+  ↓
+Cluster updated
+```
+
+## Configuration
+
+### helmfile.yaml.gotmpl Structure
+
+```yaml
+repositories:
+  - argoproj, grafana, strrl.dev
+
+environments:
+  default:
+    values:
+      clusterName: (from env)
+      domain: (from env)
+      argocd:
+        adminpasswordhashed: (from env)
+      github:
+        accesstoken: (from env)
+      cloudflare:
+        apitoken: (from env)
+        accountid: (from env)
+      ingressController:
+        replicaCount: 1
+        cloudflared:
+          replicaCount: (from env, default 1)
+      grafanaCloud:
+        token: (from env)
+        prometheus:
+          url: (from env)
+          username: (from env)
+        loki:
+          url: (from env)
+          username: (from env)
+        tempo:
+          url: (from env)
+          username: (from env)
+
+helmfiles:
+  - releases/namespaces.yaml.gotmpl
+  - releases/observability.yaml.gotmpl
+  - releases/networking.yaml.gotmpl
+  - releases/argocd.yaml.gotmpl
+```
+
+## Comparison: Simplified vs Complex
+
+| Aspect | Complex Stack | Simplified Stack |
+|--------|---------------|------------------|
+| **Local Prometheus** | Yes (StatefulSet) | No (Grafana Cloud) |
+| **Local Grafana** | Yes (Deployment) | No (Grafana Cloud UI) |
+| **Local Loki** | Yes (DaemonSet+StatefulSet) | No (Grafana Cloud) |
+| **Local Tempo** | Yes (StatefulSet) | No (Grafana Cloud) |
+| **Thanos** | Yes (sidecar+query) | No (Grafana Cloud) |
+| **Local Storage** | 50-100Gi PVCs | None |
+| **Local CPU** | ~2-4 cores | ~500m |
+| **Local Memory** | ~4-8Gi | ~640Mi |
+| **Charts/Repos** | 10+ | 3 |
+| **Configuration** | Complex, environment-specific | Simple, via env vars |
+| **Operational Load** | High (upgrades, maintenance) | Low (managed service) |
+| **Cost (Local)** | High (resources + storage) | Low |
+| **Cost (Observability)** | Storage costs | Consumption-based |
+| **Multi-cluster Consistency** | Difficult | Easy (same code) |
+| **Disaster Recovery** | Cluster loss = data loss | Cluster loss = data persists in Grafana |
+
+## Security Model
+
+### Secret Management
+
+**Before**: Environment variables for all secrets (not ideal)  
+**Now**: Environment variables for flexibility (users can get from Vault)
+
+Each organization can wrap this:
+```bash
+# Example: Team gets secrets from their Vault
+export GITHUB_TOKEN="$(vault kv get -field=token secret/github)"
+export GRAFANA_CLOUD_TOKEN="$(vault kv get -field=token secret/grafana-cloud)"
+helmfile sync
+```
+
+### Network Security
+
+- **Cloudflare Tunnel**: Cluster has no public IP; all external traffic through Cloudflare
+- **Internal Communication**: Pod-to-pod, pod-to-service (user-configured network policies)
+- **TLS**: Cloudflare terminates TLS; cluster communications encrypted by Kubernetes
+
+### RBAC
+
+- **Alloy**: Minimal service account (read pods, nodes, services, metrics)
+- **ArgoCD**: User-configured (can deploy anything or restricted)
+- **Cloudflare**: API-token only; no cluster-side access
+
+## Upgrade Path
+
+### Chart Version Upgrades
+
+1. Update version in `releases/*.yaml.gotmpl`
+2. Run `helmfile diff` to preview
+3. Push to git
+4. ArgoCD auto-syncs (if auto-sync enabled)
+
+### Environment Variable Changes
+
+1. Update environment variable
+2. Run `helmfile sync`
+3. Changes take effect immediately
+
+### Zero-Downtime Deployment
+
+Most upgrades are zero-downtime because:
+- Alloy: Can tolerate temporary collection gaps
+- Cloudflare: Multiple replicas available
+- ArgoCD: Stateless (can redeploy anytime)
+
+## Resource Efficiency
+
+### Local Resource Usage
+
+- **Alloy**: ~200m CPU, ~256Mi memory
+- **Cloudflare Tunnel**: ~100m CPU, ~128Mi memory  
+- **ArgoCD**: ~300m CPU, ~512Mi memory
+- **Total**: ~600m CPU, ~896Mi memory (< 1 node on typical clusters)
+
+### Cloud Resource Usage (Grafana Cloud)
+
+- **Metrics**: Charged per millions of samples
+- **Logs**: Charged per GB ingested
+- **Traces**: Charged per million spans
+- No local storage = no PVC costs
+
+## Disaster Recovery
+
+### Cluster Destroyed Scenario
+
+```
+Cluster gone
+  ↓
+1. Create new Kubernetes cluster
+2. Set environment variables
+3. helmfile sync
+  ↓
+All metrics/logs/traces continue in Grafana Cloud
+Historical data accessible immediately
+Cluster rebuilt in minutes
+```
+
+### Configuration/Git Lost Scenario
+
+```
+Git repo deleted
+  ↓
+1. Clone from GitHub backup
+2. Set environment variables
+3. helmfile sync
+  ↓
+Cluster services redeployed
+Full history in git
+```
+
+## Monitoring the Deployment
+
+### Health Check
+
+```bash
+# Check all pods
+kubectl get pods -A
+
+# Check releases
+helm list -A
+
+# Check ArgoCD applications
+kubectl get application -n argo-cd
+
+# Check Alloy logs
+kubectl logs -n monitoring -l app=alloy -f
+
+# Check metrics in Grafana Cloud
+curl -u username:password \
+  https://prometheus-prod-43-prod-ap-south-1.grafana.net/api/prom/api/v1/query?query=up
+```
+
+### Troubleshooting
+
+**Alloy not collecting**: Check pod logs, verify network to Grafana Cloud  
+**ArgoCD not syncing**: Check CMP plugin logs, verify git access  
+**Cloudflare not routing**: Check tunnel logs, verify DNS in Cloudflare dashboard  
+
+## Future Enhancements
+
+Possible additions without breaking simplicity:
+
+- **Cert-Manager**: For automatic TLS (if needed with Cloudflare)
+- **Kyverno**: Policy engine (optional security hardening)
+- **Trivy**: Container scanning (optional supply chain security)
+- **Falco**: Runtime security (optional threat detection)
 
 ## References
 
+- [Grafana Alloy Docs](https://grafana.com/docs/alloy/latest/)
+- [Grafana Cloud Docs](https://grafana.com/docs/grafana-cloud/)
+- [Cloudflare Tunnel Docs](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
 - [ArgoCD Docs](https://argo-cd.readthedocs.io/)
 - [Helmfile Docs](https://helmfile.readthedocs.io/)
-- [Kyverno Docs](https://kyverno.io/docs/)
-- [External Secrets Operator](https://external-secrets.io/)
-- [Cert Manager](https://cert-manager.io/)

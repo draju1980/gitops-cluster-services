@@ -1,284 +1,208 @@
 # GitOps Cluster Services
 
-Production-ready GitOps repository for managing Kubernetes cluster platform services using Helmfile + ArgoCD.
+Production-ready, minimal Kubernetes cluster infrastructure module using Helmfile + ArgoCD.
 
 ## Overview
 
-This repository deploys all cluster-wide backend services on an existing Kubernetes cluster:
+This repository deploys essential cluster-wide platform services on any Kubernetes cluster using **Helmfile** as a reusable module:
 
-- **Secrets Management**: External HashiCorp Vault + External Secrets Operator (syncs to K8s Secrets)
-- **Observability**: Grafana Cloud (Prometheus, Loki, Tempo) with Grafana Agent for collection
-- **Networking**: Cloudflare Tunnel for ingress, External DNS for Cloudflare DNS
-- **GitOps**: ArgoCD with Helmfile plugin for declarative management
-- **Minimal & Clean**: No security tools forced; users add Kyverno, Falco, Trivy as needed
+- **Observability**: Grafana Cloud Alloy agent for metrics, logs, and traces collection
+- **Networking**: Cloudflare Tunnel for secure ingress without public IPs
+- **GitOps**: ArgoCD with Helmfile plugin for declarative infrastructure
+- **Minimal**: Only 4 essential releases; no forced dependencies
 
 ## Quick Start
 
 ### Prerequisites
 
-- Existing Kubernetes cluster (1.24+)
-- `kubectl` configured to access cluster
-- `helm` 3.12+
-- `helmfile` 0.144+
-- GitHub account with personal access token
-- Cloudflare account with API token
-- External Vault instance (HA recommended for production)
-- Grafana Cloud account
+- Kubernetes cluster (1.24+)
+- `kubectl`, `helm` (3.12+), `helmfile` (0.144+)
+- GitHub personal access token
+- Cloudflare account with API token and account ID
+- Grafana Cloud account with regional endpoints
 
-### Deploy Cluster Services
+### Deploy
 
-This repository is **environment-agnostic** — deploy the same cluster services to any Kubernetes cluster by setting environment variables.
-
-#### 1. Set Required Environment Variables
+This is a reusable module — set environment variables and deploy to any Kubernetes cluster:
 
 ```bash
-export CLUSTER_NAME="my-cluster"           # Unique cluster identifier
-export CLUSTER_DOMAIN="example.com"         # Domain for cluster services
-export GITHUB_TOKEN="ghp_xxxx..."          # GitHub personal access token
-export CLOUDFLARE_TOKEN="xxxx..."          # Cloudflare API token
-export CLOUDFLARE_ACCOUNT_ID="xxxx..."     # Cloudflare account ID
-export ARGOCD_ADMIN_PASSWORD_HASH="$2a..." # bcrypt hash of admin password
-```
+# Set cluster configuration
+export CLUSTER_NAME="dev"                    # Cluster identifier
+export CLUSTER_DOMAIN="example.com"          # Domain for services
+export CLOUDFLARED_REPLICAS="1"              # (optional, default: 1)
 
-Generate bcrypt hash for ArgoCD password:
-```bash
-# Option 1: Using htpasswd
-htpasswd -B -c temp.txt admin
-cat temp.txt | awk -F: '{print $2}'
+# Set secrets
+export GITHUB_TOKEN="ghp_xxxx..."            # GitHub PAT
+export CLOUDFLARE_TOKEN="xxxx..."            # Cloudflare API token
+export CLOUDFLARE_ACCOUNT_ID="xxxx..."       # Cloudflare account ID
+export ARGOCD_ADMIN_PASSWORD_HASH="$2a$10$..." # bcrypt hash
 
-# Option 2: Using Python
-python3 -c "import crypt; print(crypt.crypt('yourpassword', crypt.METHOD_BLOWFISH))"
-```
+# Set Grafana Cloud configuration (environment-specific)
+export GRAFANA_CLOUD_TOKEN="xxx"
+export GRAFANA_CLOUD_PROM_URL="https://prometheus-prod-43-prod-ap-south-1.grafana.net/api/prom/push"
+export GRAFANA_CLOUD_PROM_USER="123456"
+export GRAFANA_CLOUD_LOKI_URL="https://logs-prod-028.grafana.net/loki/api/v1/push"
+export GRAFANA_CLOUD_LOKI_USER="123456"
+export GRAFANA_CLOUD_TEMPO_URL="tempo-prod-19-prod-ap-south-1.grafana.net:443"
+export GRAFANA_CLOUD_TEMPO_USER="123456"
 
-#### 2. Set Optional Environment Variables (Recommended)
+# Preview
+helmfile template | head -100
 
-```bash
-# External Vault
-export EXTERNAL_VAULT_SERVER="https://vault.yourdomain.com"
-export EXTERNAL_VAULT_AUTH_ROLE="default"
-
-# Grafana Cloud
-export GRAFANA_CLOUD_USERNAME="you@example.com"
-export GRAFANA_CLOUD_PROM_URL="https://prometheus-blocks-prod-us-central1.grafana.net/api/prom/push"
-export GRAFANA_CLOUD_PROM_PASSWORD="xxxx..."
-export GRAFANA_CLOUD_LOKI_URL="https://logs-prod-us-central1.grafana.net/loki/api/v1/push"
-export GRAFANA_CLOUD_LOKI_PASSWORD="xxxx..."
-
-# Optional: Tempo for distributed tracing
-export GRAFANA_CLOUD_TEMPO_URL="https://tempo-blocks-prod-us-central1.grafana.net:443"
-export GRAFANA_CLOUD_TEMPO_PASSWORD="xxxx..."
-
-# Deployment scaling
-export CLOUDFLARED_REPLICAS="3"  # For HA deployments
-```
-
-#### 3. Deploy Cluster Services
-
-**Option A: Direct Helmfile Deployment**
-
-```bash
-# Preview changes
-helmfile template
-
-# Deploy to cluster
+# Deploy
 helmfile sync
 ```
 
-**Option B: Use ArgoCD (Recommended for GitOps)**
+## Environment-Specific Deployment
+
+Same code, different environments. Just override variables:
 
 ```bash
-# Install ArgoCD first
-kubectl create namespace argocd
-helm repo add argoproj https://argoproj.github.io/argo-helm
-helm install argocd argoproj/argo-cd \
-  --namespace argocd \
-  --values bootstrap/argocd/helm-values.yaml \
-  --wait
+# Dev
+export CLUSTER_NAME="dev" CLUSTER_DOMAIN="dev.example.com" CLOUDFLARED_REPLICAS="1"
+export GRAFANA_CLOUD_PROM_URL="..." GRAFANA_CLOUD_PROM_USER="..." # dev Grafana
+helmfile sync
 
-# Deploy cluster services via ArgoCD
-kubectl apply -f argocd/applications/app-of-apps.yaml
+# Staging
+export CLUSTER_NAME="staging" CLUSTER_DOMAIN="staging.example.com" CLOUDFLARED_REPLICAS="2"
+export GRAFANA_CLOUD_PROM_URL="..." GRAFANA_CLOUD_PROM_USER="..." # staging Grafana
+helmfile sync
 
-# Access ArgoCD
-kubectl -n argocd port-forward svc/argocd-server 8080:443
-# Open https://localhost:8080 in browser
+# Production
+export CLUSTER_NAME="prod" CLUSTER_DOMAIN="example.com" CLOUDFLARED_REPLICAS="3"
+export GRAFANA_CLOUD_PROM_URL="..." GRAFANA_CLOUD_PROM_USER="..." # prod Grafana
+helmfile sync
 ```
-
-See [BOOTSTRAP.md](./docs/BOOTSTRAP.md) for detailed bootstrap instructions.
-
-## Environment Variables Reference
-
-All cluster services are configured via environment variables. Set them before deploying:
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `CLUSTER_NAME` | ✓ | - | Unique cluster identifier (dev, staging, prod, etc) |
-| `CLUSTER_DOMAIN` | ✓ | - | Domain for cluster services (e.g., example.com) |
-| `GITHUB_TOKEN` | ✓ | - | GitHub personal access token |
-| `CLOUDFLARE_TOKEN` | ✓ | - | Cloudflare API token |
-| `CLOUDFLARE_ACCOUNT_ID` | ✓ | - | Cloudflare account ID |
-| `ARGOCD_ADMIN_PASSWORD_HASH` | ✓ | - | bcrypt hash of ArgoCD admin password |
-| `EXTERNAL_VAULT_SERVER` | ✗ | `https://vault.example.com` | External Vault server URL |
-| `EXTERNAL_VAULT_PATH` | ✗ | `secret` | Vault KV path |
-| `EXTERNAL_VAULT_AUTH_PATH` | ✗ | `kubernetes` | Vault Kubernetes auth method path |
-| `EXTERNAL_VAULT_AUTH_ROLE` | ✗ | `default` | Vault Kubernetes auth role |
-| `GRAFANA_CLOUD_USERNAME` | ✗ | `changeme` | Grafana Cloud username/email |
-| `GRAFANA_CLOUD_PROM_URL` | ✗ | `https://prometheus-blocks-prod-us-central1.grafana.net/api/prom/push` | Grafana Cloud Prometheus endpoint |
-| `GRAFANA_CLOUD_PROM_PASSWORD` | ✗ | `changeme` | Grafana Cloud Prometheus API token |
-| `GRAFANA_CLOUD_LOKI_URL` | ✗ | `https://logs-prod-us-central1.grafana.net/loki/api/v1/push` | Grafana Cloud Loki endpoint |
-| `GRAFANA_CLOUD_LOKI_PASSWORD` | ✗ | `changeme` | Grafana Cloud Loki API token |
-| `GRAFANA_CLOUD_TEMPO_URL` | ✗ | `https://tempo-blocks-prod-us-central1.grafana.net:443` | Grafana Cloud Tempo endpoint |
-| `GRAFANA_CLOUD_TEMPO_PASSWORD` | ✗ | `changeme` | Grafana Cloud Tempo API token |
-| `CLOUDFLARED_REPLICAS` | ✗ | `1` | Number of Cloudflare Tunnel replicas |
-| `AGENT_LOG_LEVEL` | ✗ | `info` | Grafana Agent log level |
 
 ## Architecture
 
-### Design Pattern: App of Apps
+### Minimal Stack (4 Releases)
 
 ```
-gitops-cluster-services (this repo)
-    ├── helmfile.yaml (orchestrates all releases - 3 environments)
-    ├── releases/ (release definitions)
-    │   ├── namespaces.yaml.gotmpl
-    │   ├── vault.yaml.gotmpl (ESO → External Vault)
-    │   ├── observability.yaml.gotmpl (Grafana Agent → Grafana Cloud)
-    │   ├── ingress.yaml.gotmpl (External DNS)
-    │   ├── networking.yaml.gotmpl (Cloudflare Tunnel)
-    │   └── argocd.yaml.gotmpl (ArgoCD with Helmfile CMP)
-    ├── argocd/
-    │   ├── projects/ (3 RBAC projects)
-    │   │   ├── platform.yaml (core services)
-    │   │   ├── observability.yaml (monitoring)
-    │   │   └── networking.yaml (Cloudflare/DNS)
-    │   └── applications/
-    │       └── app-of-apps.yaml (root application)
-    ├── vault/ (vault integration examples)
-    │   ├── auth.yaml
-    │   ├── secretstore.yaml
-    │   └── externalsecret-example.yaml
-    └── docs/ (complete documentation)
-        ├── ARCHITECTURE.md
-        ├── BOOTSTRAP.md
-        └── OPERATING_MODEL.md
+helmfile.yaml                    
+├── releases/namespaces.yaml      → Create monitoring namespace
+├── releases/observability.yaml   → Grafana Cloud Alloy agent
+├── releases/networking.yaml      → Cloudflare Tunnel controller
+└── releases/argocd.yaml          → ArgoCD deployment
 ```
 
-### Technology Stack
+### Helm Repositories (3 only)
 
-| Component | Purpose | Deployment |
-|-----------|---------|----------|
-| **Helmfile** | Release orchestration | Single source of truth |
-| **ArgoCD** | GitOps deployment | Auto-sync, prune, self-heal |
-| **External Vault** | Secret management | External service (resilient) |
-| **External Secrets** | Secret sync | External Vault ↔ K8s Secrets |
-| **Grafana Agent** | Metrics/logs/traces collection | DaemonSet + StatefulSet |
-| **Grafana Cloud** | Observability platform | Managed Prometheus, Loki, Tempo |
-| **Cloudflare** | Ingress & DNS | Tunnel + DNS management |
-| **External DNS** | Automatic DNS | Cloudflare integration |
+| Repo | Purpose |
+|------|---------|
+| `argoproj` | ArgoCD |
+| `grafana` | Grafana Alloy |
+| `strrl.dev` | Cloudflare Tunnel |
 
 ### Data Flow
 
 ```
-Developer commits to gitops-cluster-services
+Kubernetes Cluster
     ↓
-GitHub webhook notifies ArgoCD
+Grafana Alloy Agent (pod)
+    ├── Scrapes metrics → Grafana Cloud Prometheus
+    ├── Collects logs → Grafana Cloud Loki
+    └── Receives traces → Grafana Cloud Tempo
     ↓
-ArgoCD pulls repo changes
+Cloudflare Tunnel
+    └── Routes ingress traffic securely
     ↓
-CMP plugin renders: helmfile -e <env> template
-    ↓
-Generated manifests passed to kubectl apply (server-side)
-    ↓
-Auto-sync + Self-heal applies changes
-    ↓
-Prune removes deleted resources
-    ↓
-Observability captures metrics/logs/traces
+ArgoCD
+    └── Manages all deployments declaratively
 ```
 
-## Deployment Patterns
+## Components
 
-Deploy the same cluster services to any environment by adjusting environment variables:
+### 🚀 Grafana Cloud Alloy (`observability.yaml`)
 
-### Development Cluster
+**Lightweight metrics/logs/traces collection**
+
+- Discovers and scrapes all Kubernetes pods, nodes, services
+- Collects container logs via log file reading
+- Receives OTLP traces on ports 4317 (gRPC) and 4318 (HTTP)
+- Sends everything to Grafana Cloud (configurable endpoints)
+- Resource-efficient: 200m CPU, 256Mi memory
+
+```yaml
+Prometheus scraping:
+  - job: kubernetes-pods (30s interval)
+  - job: kubernetes-nodes (30s interval)
+  - job: kubernetes-services (30s interval)
+
+Logs collection:
+  - All container logs from all pods
+
+Traces reception:
+  - gRPC: 0.0.0.0:4317
+  - HTTP: 0.0.0.0:4318
+```
+
+### 🌐 Cloudflare Tunnel (`networking.yaml`)
+
+**Secure ingress without public IPs**
+
+- Establishes outbound-only tunnel to Cloudflare
+- Routes all ingress through Cloudflare
+- No TLS management needed (handled by Cloudflare)
+- Configurable cloudflared replicas for HA
+
+### 🔑 ArgoCD (`argocd.yaml`)
+
+**GitOps continuous deployment**
+
+- Monitors GitHub repository for changes
+- Uses Helmfile plugin for rendering
+- Auto-syncs to cluster
+- Self-heals drift
+- Web UI for visibility and manual operations
+
+### 📦 Namespaces (`namespaces.yaml`)
+
+Creates required namespaces:
+- `argo-cd` (ArgoCD)
+- `monitoring` (Alloy, metrics)
+- `cloudflare` (Cloudflare Tunnel)
+
+## Environment Variables
+
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `CLUSTER_NAME` | ✓ | Unique cluster ID (dev, staging, prod) |
+| `CLUSTER_DOMAIN` | ✓ | Domain for services |
+| `GITHUB_TOKEN` | ✓ | GitHub personal access token |
+| `CLOUDFLARE_TOKEN` | ✓ | Cloudflare API token |
+| `CLOUDFLARE_ACCOUNT_ID` | ✓ | Cloudflare account ID |
+| `ARGOCD_ADMIN_PASSWORD_HASH` | ✓ | bcrypt hash of ArgoCD password |
+| `GRAFANA_CLOUD_TOKEN` | ✓ | Grafana Cloud API token |
+| `GRAFANA_CLOUD_PROM_URL` | ✓ | Prometheus remote write URL |
+| `GRAFANA_CLOUD_PROM_USER` | ✓ | Prometheus username |
+| `GRAFANA_CLOUD_LOKI_URL` | ✓ | Loki push URL |
+| `GRAFANA_CLOUD_LOKI_USER` | ✓ | Loki username |
+| `GRAFANA_CLOUD_TEMPO_URL` | ✓ | Tempo endpoint |
+| `GRAFANA_CLOUD_TEMPO_USER` | ✓ | Tempo username |
+| `CLOUDFLARED_REPLICAS` | ✗ | Cloudflare replicas (default: 1) |
+
+### Generate ArgoCD Password Hash
+
 ```bash
-export CLUSTER_NAME="dev"
-export CLUSTER_DOMAIN="dev.example.com"
-export CLOUDFLARED_REPLICAS="1"
-# ... set other required variables
-helmfile sync
+# Option 1: htpasswd
+htpasswd -B -c temp.txt admin
+cat temp.txt | awk -F: '{print $2}'
+
+# Option 2: Python
+python3 -c "import crypt; print(crypt.crypt('yourpassword', crypt.METHOD_BLOWFISH))"
 ```
-
-### Staging Cluster
-```bash
-export CLUSTER_NAME="staging"
-export CLUSTER_DOMAIN="staging.example.com"
-export CLOUDFLARED_REPLICAS="2"
-# ... set other required variables
-helmfile sync
-```
-
-### Production Cluster
-```bash
-export CLUSTER_NAME="prod"
-export CLUSTER_DOMAIN="example.com"
-export CLOUDFLARED_REPLICAS="3"
-# ... set other required variables with production values
-helmfile sync
-```
-
-All clusters deploy identical services — only configuration values differ.
-
-## Key Features
-
-### 🔐 Secrets Management
-- **External Vault**: Resilient external service, survives cluster outages
-- **Kubernetes auth**: Automatic pod authentication via ServiceAccount
-- **External Secrets Operator**: Syncs secrets from Vault to Kubernetes Secrets
-- **Rotation**: Automatic secret refresh (configurable)
-- **Secret Zero**: No secrets in git; all stored in external Vault
-- **Disaster Recovery**: Cluster-independent secrets ensure data safety
-
-### 📊 Observability - Grafana Cloud
-- **Grafana Agent**: Collects metrics, logs, and traces from cluster
-- **Prometheus**: Hosted in Grafana Cloud for metrics collection
-- **Loki**: Hosted in Grafana Cloud for log aggregation
-- **Tempo**: Hosted in Grafana Cloud for distributed tracing
-- **Zero Local Storage**: No PVCs needed for observability; fully managed service
-- **Auto-scaling**: Grafana Cloud handles retention and scaling automatically
-
-### 🌐 Networking
-- **Cloudflare Tunnel**: Expose cluster without public IPs
-- **External DNS**: Automatic Cloudflare DNS management
-- **No Ingress Controller**: Cloudflare Tunnel handles all ingress routing
-- **No TLS Management**: Cloudflare manages TLS certificates
-
-### 🚀 GitOps
-- **Helmfile + ArgoCD**: Single source of truth
-- **CMP Plugin**: Helmfile rendering in ArgoCD
-- **Auto-Sync**: Changes deployed automatically
-- **Self-Heal**: Drift corrected automatically
-- **Prune**: Deleted resources removed
-- **3 Environments**: dev, staging, prod with different configs
-
-### 🎯 Minimal & Clean
-- **No Security Tools Forced**: Users add Kyverno, Falco, Trivy as needed
-- **Production-Ready Baseline**: All critical services included
-- **Easy to Extend**: Clear patterns for adding new services
 
 ## Usage
 
-### Validate Configuration
-
-Before deploying, validate your environment variables and Helmfile:
+### Validate Helmfile
 
 ```bash
-# Check that required environment variables are set
-echo "CLUSTER_NAME: $CLUSTER_NAME"
-echo "CLUSTER_DOMAIN: $CLUSTER_DOMAIN"
-echo "GITHUB_TOKEN: ${GITHUB_TOKEN:0:10}..."  # Show only first 10 chars
+# Check required env vars
+echo "CLUSTER_NAME=$CLUSTER_NAME CLUSTER_DOMAIN=$CLUSTER_DOMAIN"
 
-# Render manifests to preview
-helmfile template | head -100
+# Render manifests
+helmfile template | head -50
 
 # Validate with kubeconform
 helmfile template | kubeconform -strict
@@ -287,166 +211,83 @@ helmfile template | kubeconform -strict
 yamllint releases/*.yaml.gotmpl
 ```
 
-### Deploy All Services
-
-Deploy cluster services with environment variables set:
+### Deploy
 
 ```bash
-# Set all required environment variables (see "Set Required Environment Variables" above)
+# Set all environment variables first (see Quick Start)
 
-# Preview changes
-helmfile template
+# Preview
+helmfile diff
 
-# Deploy to cluster
+# Deploy
 helmfile sync
 
-# Or apply directly
-helmfile template | kubectl apply -f -
+# Check status
+kubectl get pods -A
+kubectl get ingress -A
 ```
 
-### Deploy Changes (via ArgoCD - Recommended)
-
-1. **Edit release or values**
-2. **Commit to git**:
-   ```bash
-   git add .
-   git commit -m "Update Prometheus retention"
-   git push origin master
-   ```
-3. **ArgoCD auto-syncs** within 3 minutes (or manually sync via UI)
-4. **Monitor in ArgoCD UI**: https://argo-cd.{clusterName}.{domain}
-
-**Recommended**: Use ArgoCD for automatic syncing, drift detection, and rollback capabilities.
-
-### Manage Vault Secrets
-
-All secrets are stored in your external Vault instance. To sync secrets to Kubernetes:
+### Monitor
 
 ```bash
-# Create ExternalSecret to sync from external Vault
+# Check Alloy status
+kubectl get pods -n monitoring
+
+# View Alloy logs
+kubectl logs -n monitoring -l app=alloy -f
+
+# Check metrics in Grafana Cloud
+# Dashboard: https://your-instance.grafana.net/d/kubernetes
+
+# Access ArgoCD UI
+kubectl port-forward -n argo-cd svc/argo-cd-server 8080:443
+# https://localhost:8080 (password from ARGOCD_ADMIN_PASSWORD_HASH)
+```
+
+## Deployment Examples
+
+### Deploy to Multiple Orgs/Teams
+
+Each team can use cluster-services with their own configuration:
+
+```bash
+# Team A (Grafana Cloud instance in US)
+export GRAFANA_CLOUD_PROM_URL="https://prometheus-prod-43-prod-us-central1.grafana.net/api/prom/push"
+helmfile sync
+
+# Team B (Grafana Cloud instance in EU)
+export GRAFANA_CLOUD_PROM_URL="https://prometheus-prod-55-prod-eu-west-1.grafana.net/api/prom/push"
+helmfile sync
+```
+
+### Deploy with ArgoCD (Recommended)
+
+```bash
+# Create ArgoCD application pointing to this repo
 kubectl apply -f - <<'EOF'
-apiVersion: external-secrets.io/v1beta1
-kind: ExternalSecret
+apiVersion: argoproj.io/v1alpha1
+kind: Application
 metadata:
-  name: app-db
-  namespace: default
+  name: cluster-services
+  namespace: argo-cd
 spec:
-  secretStoreRef:
-    name: vault  # References the ClusterSecretStore
-    kind: ClusterSecretStore
-  target:
-    name: app-db  # Target Kubernetes Secret name
-  data:
-    - secretKey: username
-      remoteRef:
-        key: myapp/db      # Path in external Vault
-        property: username # Property in secret
-    - secretKey: password
-      remoteRef:
-        key: myapp/db
-        property: password
+  project: default
+  source:
+    repoURL: https://github.com/your-org/gitops-cluster-services.git
+    targetRevision: main
+    path: .
+    plugin:
+      name: helmfile
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
 EOF
-
-# External Secrets Operator will automatically:
-# - Authenticate to external Vault using Kubernetes auth
-# - Fetch secrets from your Vault instance
-# - Create/update the Kubernetes Secret
-# - Refresh secrets on configured intervals
-```
-
-**Note**: The ClusterSecretStore is pre-configured in the `vault-secretstore` release to connect to your external Vault using Kubernetes authentication.
-
-### Monitor Observability
-
-All observability is handled by Grafana Cloud. To view metrics, logs, and traces:
-
-1. **Access Grafana Cloud**:
-   - Visit your Grafana Cloud instance at: `https://<your-instance>.grafana.net`
-   - Log in with your Grafana Cloud credentials
-
-2. **Check Grafana Agent Status**:
-   ```bash
-   # View Grafana Agent deployment
-   kubectl -n monitoring get deployment grafana-agent
-   kubectl -n monitoring get logs -f deployment/grafana-agent
-   
-   # View Grafana Agent StatefulSet for node metrics
-   kubectl -n monitoring get statefulset grafana-agent-node
-   kubectl -n monitoring logs -f statefulset/grafana-agent-node
-   ```
-
-3. **Verify Data is Being Collected**:
-   - In Grafana Cloud, check the **Explore** tab for metrics, logs, and traces
-   - Look for dashboards automatically created for Kubernetes monitoring
-
-## Documentation
-
-- **[ARCHITECTURE.md](./docs/ARCHITECTURE.md)**: Detailed architecture, design decisions, integration patterns
-- **[BOOTSTRAP.md](./docs/BOOTSTRAP.md)**: Step-by-step bootstrap guide, Vault setup, troubleshooting
-- **[OPERATING_MODEL.md](./docs/OPERATING_MODEL.md)**: Day-2 operations, maintenance tasks, incident response
-
-## Repository Structure
-
-```
-gitops-cluster-services/
-├── README.md (this file)
-├── helmfile.yaml (main orchestration - dev/staging/prod environments)
-├── releases/ (helm release definitions)
-│   ├── namespaces.yaml.gotmpl (9 namespaces)
-│   ├── vault.yaml.gotmpl (External Secrets Operator for external Vault)
-│   ├── observability.yaml.gotmpl (Grafana Agent for Grafana Cloud)
-│   ├── ingress.yaml.gotmpl (External DNS only)
-│   ├── networking.yaml.gotmpl (Cloudflare Tunnel)
-│   └── argocd.yaml.gotmpl (ArgoCD with Helmfile CMP plugin)
-├── argocd/
-│   ├── projects/ (3 AppProject RBAC)
-│   │   ├── platform.yaml (core infrastructure)
-│   │   ├── observability.yaml (monitoring & logging)
-│   │   └── networking.yaml (Cloudflare & DNS)
-│   └── applications/
-│       └── app-of-apps.yaml (root application)
-├── bootstrap/
-│   └── argocd/
-│       ├── helm-values.yaml (ArgoCD bootstrap values)
-│       └── install.sh (placeholder for bootstrap script)
-├── vault/ (Vault integration examples)
-│   ├── auth.yaml (Kubernetes auth method setup)
-│   ├── secretstore.yaml (ClusterSecretStore configuration)
-│   └── externalsecret-example.yaml (example ExternalSecret usage)
-├── docs/ (complete documentation)
-│   ├── ARCHITECTURE.md (design decisions, patterns)
-│   ├── BOOTSTRAP.md (step-by-step deployment guide)
-│   └── OPERATING_MODEL.md (day-2 operations, troubleshooting)
-├── .gitignore (excludes .claude/ and common files)
-└── .git/ (git repository)
 ```
 
 ## Customization
-
-### Update Chart Versions
-
-```bash
-# Check available versions
-helm search repo <chart> --versions
-
-# Update helmfile.yaml
-# Redeploy via ArgoCD (auto-sync will apply)
-```
-
-### Modify Environment Values
-
-Edit `helmfile.yaml` and update the environment-specific values:
-
-```yaml
-environments:
-  prod:
-    values:
-      - vault:
-          replicas: 5  # Increase replicas
-          storageSize: "100Gi"
-        prometheus:
-          retention: "90d"
-```
 
 ### Add New Release
 
@@ -455,113 +296,94 @@ environments:
 3. Commit and push
 4. ArgoCD deploys automatically
 
-### Configure External Vault (Required)
+### Update Chart Versions
 
-To connect to your external Vault instance:
+Edit release version in `releases/*.yaml.gotmpl` and push. ArgoCD syncs automatically.
 
-1. Set up external Vault (standalone, HA cluster, or managed service)
-2. Enable Kubernetes auth method in Vault:
-   ```bash
-   vault auth enable kubernetes
-   vault write auth/kubernetes/config \
-     kubernetes_host="https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_SERVICE_PORT" \
-     kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
-     token_reviewer_jwt=@/var/run/secrets/kubernetes.io/serviceaccount/token
-   
-   # Create a role for External Secrets Operator
-   vault write auth/kubernetes/role/default \
-     bound_service_account_names=external-secrets-vault \
-     bound_service_account_namespaces=external-secrets \
-     policies=default
-   ```
-3. Update `helmfile.yaml` for each environment:
-   ```yaml
-   externalVault:
-     server: "https://vault.yourdomain.com"  # Your Vault server URL
-     path: "secret"  # KV v2 path
-     version: "v2"
-     authPath: "kubernetes"
-     authRole: "default"  # Must match role created above
-   ```
-4. Commit and push
-5. ArgoCD deploys External Secrets Operator configured for external Vault
+### Override Values per Environment
 
-### Configure Grafana Cloud Endpoints (Required)
+Extend `helmfile.yaml` environments section:
 
-To connect to Grafana Cloud:
-
-1. Create a Grafana Cloud instance at https://grafana.com/cloud/
-2. Get your credentials:
-   - Username (usually "username@example.com")
-   - Grafana Cloud API tokens for Prometheus, Loki, and Tempo
-   - Regional endpoints (replace `us-central1` in helmfile.yaml if needed)
-3. Update `helmfile.yaml` for each environment:
-   ```yaml
-   grafanaCloud:
-     username: "your-email@example.com"
-     prometheusUrl: "https://prometheus-blocks-prod-us-central1.grafana.net/api/prom/push"
-     prometheusPassword: "your-api-token"
-     lokiUrl: "https://logs-prod-us-central1.grafana.net/loki/api/v1/push"
-     lokiPassword: "your-api-token"
-   ```
-4. Commit and push
-5. ArgoCD deploys Grafana Agent with Grafana Cloud configuration
+```yaml
+environments:
+  prod:
+    values:
+      - clusterName: prod
+        cloudflared:
+          replicaCount: 3
+```
 
 ## Troubleshooting
 
-See [OPERATING_MODEL.md](./docs/OPERATING_MODEL.md#troubleshooting) for common issues:
-- ArgoCD stuck "Progressing"
-- Vault authentication failing
-- Metrics not appearing in Prometheus
-- Storage volume issues
+### Alloy not collecting metrics
 
-## Security
+```bash
+# Check pod status
+kubectl get pods -n monitoring
 
-### Secret Management
-- No secrets committed to git
-- All secrets stored in Vault
-- Automatic rotation via External Secrets
-- Audit logging for all secret access
+# View logs
+kubectl logs -n monitoring -l app=alloy
 
-### Network & Access
-- Cloudflare Tunnel for secure cluster access
-- No public ingress IPs exposed
-- Private Kubernetes API access only
-- ClusterSecretStore RBAC controls
+# Check configuration
+kubectl get configmap -n monitoring alloy-config -o yaml
 
-### Compliance
-- Local storage with encrypted PVCs (user configured)
-- Optional S3 storage with encryption (user configured)
-- Audit logging via Vault and Kubernetes API server
-- Resource limits and requests enforced
+# Verify network connectivity to Grafana Cloud
+kubectl exec -it -n monitoring <pod-name> -- \
+  curl -v https://prometheus-prod-43-prod-ap-south-1.grafana.net/api/prom/push
+```
 
-## Contributing
+### ArgoCD not syncing
 
-1. Create a feature branch
-2. Make changes
-3. Test locally: `helmfile -e dev template`
-4. Commit with draju1980 profile
-5. Push and create PR
+```bash
+# Check ArgoCD status
+kubectl get application -n argo-cd
 
-All changes are validated by:
-- yamllint for YAML syntax
-- helmfile template rendering
-- kubeconform for Kubernetes schema compliance
+# View ArgoCD logs
+kubectl logs -n argo-cd -l app.kubernetes.io/name=argocd-application-controller -f
 
-## Support & References
+# Check if Helmfile plugin is working
+kubectl get configmap -n argo-cd argocd-cmp-plugins -o yaml
+```
 
-- **ArgoCD Docs**: https://argo-cd.readthedocs.io/
-- **Helmfile Docs**: https://helmfile.readthedocs.io/
-- **Vault Docs**: https://www.vaultproject.io/docs/
-- **External Secrets**: https://external-secrets.io/
-- **Cloudflare Docs**: https://developers.cloudflare.com/
+### Cloudflare Tunnel not routing
+
+```bash
+# Check cloudflared status
+kubectl get pods -n cloudflare
+
+# View tunnel logs
+kubectl logs -n cloudflare -l app=cloudflare-tunnel-ingress-controller -f
+
+# Verify DNS in Cloudflare dashboard
+```
+
+## Repository Structure
+
+```
+cluster-services/
+├── helmfile.yaml.gotmpl           # Main orchestration
+├── releases/                       # 4 essential releases
+│   ├── namespaces.yaml.gotmpl
+│   ├── observability.yaml.gotmpl  # Grafana Alloy
+│   ├── networking.yaml.gotmpl     # Cloudflare Tunnel
+│   └── argocd.yaml.gotmpl
+├── docs/                          # Documentation
+├── README.md                       # This file
+└── .gitignore
+```
+
+## Best Practices
+
+- **Environment-specific secrets**: Use different tokens/credentials per environment
+- **Helm values**: Override via environment variables, not git
+- **GitOps workflow**: Use ArgoCD for automatic deployments
+- **Multi-team**: Each team can deploy independently with their config
+- **IaC**: Version all infrastructure changes in git
 
 ## License
 
 MIT
 
-## Ownership
+## Support
 
-- **Maintained by**: draju1980
-- **GitHub**: https://github.com/draju1980/gitops-cluster-services
-- **Contact**: For issues and questions, use GitHub issues
+For issues and questions, use GitHub issues or contact: draju1980

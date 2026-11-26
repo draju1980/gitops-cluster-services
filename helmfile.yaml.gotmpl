@@ -50,13 +50,13 @@ environments:
           token: {{ env "GRAFANA_CLOUD_TOKEN" | default "changeme" }}
           prometheus:
             url: {{ env "GRAFANA_CLOUD_PROM_URL" | default "https://prometheus-prod-43-prod-ap-south-1.grafana.net/api/prom/push" }}
-            username: {{ env "GRAFANA_CLOUD_PROM_USER" | default "1567196" }}
+            username: {{ env "GRAFANA_CLOUD_PROM_USER" | default "0000000" }}
           loki:
             url: {{ env "GRAFANA_CLOUD_LOKI_URL" | default "https://logs-prod-028.grafana.net/loki/api/v1/push" }}
-            username: {{ env "GRAFANA_CLOUD_LOKI_USER" | default "1567196" }}
+            username: {{ env "GRAFANA_CLOUD_LOKI_USER" | default "0000000" }}
           tempo:
             url: {{ env "GRAFANA_CLOUD_TEMPO_URL" | default "tempo-prod-19-prod-ap-south-1.grafana.net:443" }}
-            username: {{ env "GRAFANA_CLOUD_TEMPO_USER" | default "1561497" }}
+            username: {{ env "GRAFANA_CLOUD_TEMPO_USER" | default "0000000" }}
 
 ---
 helmfiles:

@@ -20,7 +20,13 @@ repositories:
 #
 # Optional environment variables:
 #   CLOUDFLARED_REPLICAS       - Number of cloudflared replicas (default: 1)
-#   GRAFANA_CLOUD_TOKEN        - Grafana Cloud API token (from Vault: secret/metadata/gitops/dev/grafana-cloud)
+#   GRAFANA_CLOUD_TOKEN        - Grafana Cloud API token
+#   GRAFANA_CLOUD_PROM_URL     - Grafana Cloud Prometheus remote write URL
+#   GRAFANA_CLOUD_PROM_USER    - Grafana Cloud Prometheus username
+#   GRAFANA_CLOUD_LOKI_URL     - Grafana Cloud Loki push URL
+#   GRAFANA_CLOUD_LOKI_USER    - Grafana Cloud Loki username
+#   GRAFANA_CLOUD_TEMPO_URL    - Grafana Cloud Tempo endpoint
+#   GRAFANA_CLOUD_TEMPO_USER   - Grafana Cloud Tempo username
 
 environments:
   default:
@@ -35,10 +41,22 @@ environments:
         cloudflare:
           apitoken: {{ env "CLOUDFLARE_TOKEN" | default "changeme" }}
           accountid: {{ env "CLOUDFLARE_ACCOUNT_ID" | default "changeme" }}
-        cloudflared:
-          replicaCount: {{ env "CLOUDFLARED_REPLICAS" | default "1" | atoi }}
+        ingressController:
+          replicaCount: 1
+          cloudflared:
+            replicaCount: {{ env "CLOUDFLARED_REPLICAS" | default "1" | atoi }}
+            protocol: auto
         grafanaCloud:
           token: {{ env "GRAFANA_CLOUD_TOKEN" | default "changeme" }}
+          prometheus:
+            url: {{ env "GRAFANA_CLOUD_PROM_URL" | default "https://prometheus-prod-43-prod-ap-south-1.grafana.net/api/prom/push" }}
+            username: {{ env "GRAFANA_CLOUD_PROM_USER" | default "1567196" }}
+          loki:
+            url: {{ env "GRAFANA_CLOUD_LOKI_URL" | default "https://logs-prod-028.grafana.net/loki/api/v1/push" }}
+            username: {{ env "GRAFANA_CLOUD_LOKI_USER" | default "1567196" }}
+          tempo:
+            url: {{ env "GRAFANA_CLOUD_TEMPO_URL" | default "tempo-prod-19-prod-ap-south-1.grafana.net:443" }}
+            username: {{ env "GRAFANA_CLOUD_TEMPO_USER" | default "1561497" }}
 
 ---
 helmfiles:

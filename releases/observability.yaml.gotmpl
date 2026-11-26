@@ -81,9 +81,9 @@ releases:
             // Forward metrics to Grafana Cloud
             prometheus.remote_write "grafana_cloud" {
               endpoint {
-                url = "https://prometheus-prod-43-prod-ap-south-1.grafana.net/api/prom/push"
+                url = "{{ .Values.grafanaCloud.prometheus.url }}"
                 basic_auth {
-                  username = "1567196"
+                  username = "{{ .Values.grafanaCloud.prometheus.username }}"
                   password = env("GRAFANA_CLOUD_TOKEN")
                 }
               }
@@ -104,9 +104,9 @@ releases:
 
             loki.write "grafana_cloud" {
               endpoint {
-                url = "https://logs-prod-028.grafana.net/loki/api/v1/push"
+                url = "{{ .Values.grafanaCloud.loki.url }}"
                 basic_auth {
-                  username = "1567196"
+                  username = "{{ .Values.grafanaCloud.loki.username }}"
                   password = env("GRAFANA_CLOUD_TOKEN")
                 }
               }
@@ -128,13 +128,13 @@ releases:
 
             otelcol.exporter.otlp "grafanacloud" {
               client {
-                endpoint = "tempo-prod-19-prod-ap-south-1.grafana.net:443"
+                endpoint = "{{ .Values.grafanaCloud.tempo.url }}"
                 auth = otelcol.auth.basic.grafanacloud.handler
               }
             }
 
             otelcol.auth.basic "grafanacloud" {
-              username = "1561497"
+              username = "{{ .Values.grafanaCloud.tempo.username }}"
               password = env("GRAFANA_CLOUD_TOKEN")
             }
 

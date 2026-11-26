@@ -7,20 +7,22 @@ repositories:
   url: https://helm.strrl.dev
 
 ---
-# Environment-agnostic Helmfile
-# Deploy cluster services to any Kubernetes cluster by passing environment variables
+# Vault-backed Helmfile
+# All secrets are fetched from Vault at deploy time
 #
 # Required environment variables:
 #   CLUSTER_NAME           - Unique cluster identifier (dev, staging, prod, etc)
 #   CLUSTER_DOMAIN         - Domain for cluster services (e.g., example.com)
-#   GITHUB_TOKEN           - GitHub personal access token for private gitops repository
-#   CLOUDFLARE_TOKEN       - Cloudflare API token for DNS and tunnel
-#   CLOUDFLARE_ACCOUNT_ID  - Cloudflare account ID
-#   ARGOCD_ADMIN_PASSWORD_HASH - bcrypt hash of ArgoCD admin password
 #
 # Optional environment variables:
-#   CLOUDFLARED_REPLICAS       - Number of cloudflared replicas (default: 1)
-#   GRAFANA_CLOUD_TOKEN        - Grafana Cloud API token (from Vault: secret/metadata/gitops/dev/grafana-cloud)
+#   CLOUDFLARED_REPLICAS   - Number of cloudflared replicas (default: 1)
+#
+# All secrets are fetched from Vault:
+#   secret/metadata/gitops/{{ CLUSTER_NAME }}/argocd#adminpasswordhashed
+#   secret/metadata/gitops/{{ CLUSTER_NAME }}/github#accesstoken
+#   secret/metadata/gitops/{{ CLUSTER_NAME }}/cloudflare#apitoken
+#   secret/metadata/gitops/{{ CLUSTER_NAME }}/cloudflare#accountid
+#   secret/metadata/gitops/{{ CLUSTER_NAME }}/grafana-cloud#token
 
 environments:
   default:
@@ -29,16 +31,19 @@ environments:
         domain: {{ env "CLUSTER_DOMAIN" | default "example.com" }}
         environment: {{ env "CLUSTER_NAME" | default "default" }}
         argocd:
-          adminpasswordhashed: {{ env "ARGOCD_ADMIN_PASSWORD_HASH" | default "$2a$10$R9h7cIPooruNMMwq.L7KqOOtV27x8BwwfHuPVnKfKWGz/BnQuZ8eC" }}
+          adminpasswordhashed: {{ fetchSecretValue "ref+vault://secret/metadata/gitops/{{ env "CLUSTER_NAME" | default "default" }}/argocd#adminpasswordhashed" }}
         github:
-          accesstoken: {{ env "GITHUB_TOKEN" | default "changeme" }}
+          accesstoken: {{ fetchSecretValue "ref+vault://secret/metadata/gitops/{{ env "CLUSTER_NAME" | default "default" }}/github#accesstoken" }}
         cloudflare:
-          apitoken: {{ env "CLOUDFLARE_TOKEN" | default "changeme" }}
-          accountid: {{ env "CLOUDFLARE_ACCOUNT_ID" | default "changeme" }}
-        cloudflared:
-          replicaCount: {{ env "CLOUDFLARED_REPLICAS" | default "1" | atoi }}
+          apitoken: {{ fetchSecretValue "ref+vault://secret/metadata/gitops/{{ env "CLUSTER_NAME" | default "default" }}/cloudflare#apitoken" }}
+          accountid: {{ fetchSecretValue "ref+vault://secret/metadata/gitops/{{ env "CLUSTER_NAME" | default "default" }}/cloudflare#accountid" }}
+        ingressController:
+          replicaCount: 1
+          cloudflared:
+            replicaCount: {{ env "CLOUDFLARED_REPLICAS" | default "1" | atoi }}
+            protocol: auto
         grafanaCloud:
-          token: {{ env "GRAFANA_CLOUD_TOKEN" | default "changeme" }}
+          token: {{ fetchSecretValue "ref+vault://secret/metadata/gitops/{{ env "CLUSTER_NAME" | default "default" }}/grafana-cloud#token" }}
 
 ---
 helmfiles:

@@ -180,5 +180,5 @@ releases:
               namespace: monitoring
             type: Opaque
             stringData:
-              # Token from Vault: secret/metadata/gitops/{{ .Values.environment }}/grafana-cloud
-              token: {{ .Values.grafanaCloud.token | quote }}
+              # Token from: secret/metadata/gitops/dev/grafana-cloud
+              token: "{{ env "GRAFANA_CLOUD_TOKEN" | default "changeme" }}"

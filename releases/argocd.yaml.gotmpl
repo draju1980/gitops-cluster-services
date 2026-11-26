@@ -18,7 +18,7 @@ releases:
             argocdServerAdminPassword: {{ .Values.argocd.adminpasswordhashed }}
             argocdServerAdminPasswordMtime: "2024-01-01T00:00:00Z"
           repositories:
-            - url: https://github.com/531001/gitops-{{ .Values.clusterName }}.git
+            - url: https://github.com/draju1980/gitops-{{ .Values.clusterName }}.git
               name: gitops-{{ .Values.clusterName }}
               project: default
               type: git
@@ -80,7 +80,7 @@ releases:
             namespace: argo-cd
             project: default
             source:
-              repoURL: https://github.com/531001/gitops-{{ .Values.clusterName }}.git
+              repoURL: https://github.com/draju1980/gitops-{{ .Values.clusterName }}.git
               targetRevision: main
               path: .
               directory:

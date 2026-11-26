@@ -77,10 +77,6 @@ helmfiles:
     inherits: [repositories]
     values:
       - {{ .Values | toYaml | nindent 8 }}
-  - path: releases/vault.yaml.gotmpl
-    inherits: [repositories]
-    values:
-      - {{ .Values | toYaml | nindent 8 }}
   - path: releases/observability.yaml.gotmpl
     inherits: [repositories]
     values:

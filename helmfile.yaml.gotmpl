@@ -1,10 +1,6 @@
 repositories:
 - name: argoproj
   url: https://argoproj.github.io/argo-helm
-- name: external-secrets
-  url: https://charts.external-secrets.io
-- name: metrics-server
-  url: https://kubernetes-sigs.github.io/metrics-server/
 - name: grafana
   url: https://grafana.github.io/helm-charts
 - name: strrl.dev
@@ -24,18 +20,7 @@ repositories:
 #
 # Optional environment variables:
 #   CLOUDFLARED_REPLICAS       - Number of cloudflared replicas (default: 1)
-#   EXTERNAL_VAULT_SERVER      - External Vault server URL
-#   EXTERNAL_VAULT_PATH        - Vault KV path (default: secret)
-#   EXTERNAL_VAULT_AUTH_PATH   - Vault auth method path (default: kubernetes)
-#   EXTERNAL_VAULT_AUTH_ROLE   - Vault Kubernetes auth role (default: default)
-#   GRAFANA_CLOUD_USERNAME     - Grafana Cloud username/email
-#   GRAFANA_CLOUD_PROM_URL     - Grafana Cloud Prometheus push URL
-#   GRAFANA_CLOUD_PROM_PASSWORD - Grafana Cloud Prometheus API token
-#   GRAFANA_CLOUD_LOKI_URL     - Grafana Cloud Loki push URL
-#   GRAFANA_CLOUD_LOKI_PASSWORD - Grafana Cloud Loki API token
-#   GRAFANA_CLOUD_TEMPO_URL    - Grafana Cloud Tempo URL (optional)
-#   GRAFANA_CLOUD_TEMPO_PASSWORD - Grafana Cloud Tempo API token (optional)
-#   AGENT_LOG_LEVEL            - Grafana Agent log level (default: info)
+#   GRAFANA_CLOUD_TOKEN        - Grafana Cloud API token (from Vault: secret/metadata/gitops/dev/grafana-cloud)
 
 environments:
   default:
@@ -45,8 +30,6 @@ environments:
         environment: {{ env "CLUSTER_NAME" | default "default" }}
         argocd:
           adminpasswordhashed: {{ env "ARGOCD_ADMIN_PASSWORD_HASH" | default "$2a$10$R9h7cIPooruNMMwq.L7KqOOtV27x8BwwfHuPVnKfKWGz/BnQuZ8eC" }}
-          notifications:
-            enabled: false
         github:
           accesstoken: {{ env "GITHUB_TOKEN" | default "changeme" }}
         cloudflare:
@@ -54,22 +37,8 @@ environments:
           accountid: {{ env "CLOUDFLARE_ACCOUNT_ID" | default "changeme" }}
         cloudflared:
           replicaCount: {{ env "CLOUDFLARED_REPLICAS" | default "1" | atoi }}
-        externalVault:
-          server: {{ env "EXTERNAL_VAULT_SERVER" | default "https://vault.example.com" }}
-          path: {{ env "EXTERNAL_VAULT_PATH" | default "secret" }}
-          version: v2
-          authPath: {{ env "EXTERNAL_VAULT_AUTH_PATH" | default "kubernetes" }}
-          authRole: {{ env "EXTERNAL_VAULT_AUTH_ROLE" | default "default" }}
         grafanaCloud:
-          username: {{ env "GRAFANA_CLOUD_USERNAME" | default "changeme" }}
-          prometheusUrl: {{ env "GRAFANA_CLOUD_PROM_URL" | default "https://prometheus-blocks-prod-us-central1.grafana.net/api/prom/push" }}
-          prometheusPassword: {{ env "GRAFANA_CLOUD_PROM_PASSWORD" | default "changeme" }}
-          lokiUrl: {{ env "GRAFANA_CLOUD_LOKI_URL" | default "https://logs-prod-us-central1.grafana.net/loki/api/v1/push" }}
-          lokiPassword: {{ env "GRAFANA_CLOUD_LOKI_PASSWORD" | default "changeme" }}
-          tempoUrl: {{ env "GRAFANA_CLOUD_TEMPO_URL" | default "https://tempo-blocks-prod-us-central1.grafana.net:443" }}
-          tempoPassword: {{ env "GRAFANA_CLOUD_TEMPO_PASSWORD" | default "changeme" }}
-        agent:
-          logLevel: {{ env "AGENT_LOG_LEVEL" | default "info" }}
+          token: {{ env "GRAFANA_CLOUD_TOKEN" | default "changeme" }}
 
 ---
 helmfiles:

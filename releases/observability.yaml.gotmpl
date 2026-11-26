@@ -1,71 +1,5 @@
 ---
 releases:
-  - name: metrics-server
-    namespace: kube-system
-    forceNamespace: kube-system
-    chart: metrics-server/metrics-server
-    version: 3.13.0
-
-  # SecretStore for monitoring namespace to access Vault secrets
-  - name: monitoring-secretstore
-    namespace: monitoring
-    forceNamespace: monitoring
-    chart: "git::https://github.com/531001/helm-charts.git@raw?ref=main"
-    values:
-      - resources:
-          - apiVersion: external-secrets.io/v1beta1
-            kind: SecretStore
-            metadata:
-              name: vault
-              namespace: monitoring
-            spec:
-              provider:
-                vault:
-                  server: {{ requiredEnv "VAULT_ADDR" | quote }}
-                  path: {{ .Values.externalVault.path | default "secret" | quote }}
-                  version: {{ .Values.externalVault.version | default "v2" | quote }}
-                  auth:
-                    tokenSecretRef:
-                      name: external-secrets-vault-token
-                      namespace: external-secrets
-                      key: token
-
-          # ExternalSecret to pull Grafana Cloud credentials from Vault
-          - apiVersion: external-secrets.io/v1beta1
-            kind: ExternalSecret
-            metadata:
-              name: grafana-cloud-credentials
-              namespace: monitoring
-            spec:
-              refreshInterval: 1h
-              secretStoreRef:
-                name: vault
-                kind: SecretStore
-              target:
-                name: grafana-cloud-credentials
-                creationPolicy: Owner
-              data:
-                - secretKey: username
-                  remoteRef:
-                    key: gitops/{{ .Values.environment | default "dev" }}/grafana-cloud
-                    property: username
-                - secretKey: password
-                  remoteRef:
-                    key: gitops/{{ .Values.environment | default "dev" }}/grafana-cloud
-                    property: password
-                - secretKey: prometheus-url
-                  remoteRef:
-                    key: gitops/{{ .Values.environment | default "dev" }}/grafana-cloud
-                    property: prometheus-url
-                - secretKey: loki-url
-                  remoteRef:
-                    key: gitops/{{ .Values.environment | default "dev" }}/grafana-cloud
-                    property: loki-url
-                - secretKey: tempo-url
-                  remoteRef:
-                    key: gitops/{{ .Values.environment | default "dev" }}/grafana-cloud
-                    property: tempo-url
-
   # Grafana Cloud Alloy Agent
   # Collects all metrics, logs, and traces from the cluster and sends to Grafana Cloud
   - name: grafana-alloy
@@ -76,13 +10,13 @@ releases:
     values:
       - alloy:
           stability: experimental
-          loglevel: {{ .Values.agent.logLevel | default "info" }}
+          loglevel: info
           configMap:
             create: true
             name: alloy-config
           config: |
             logging {
-              level  = "{{ .Values.agent.logLevel | default "info" }}"
+              level  = "info"
               format = "json"
             }
 
@@ -147,10 +81,10 @@ releases:
             // Forward metrics to Grafana Cloud
             prometheus.remote_write "grafana_cloud" {
               endpoint {
-                url = "{{ .Values.grafanaCloud.prometheusUrl }}"
+                url = "https://prometheus-prod-43-prod-ap-south-1.grafana.net/api/prom/push"
                 basic_auth {
-                  username = "{{ .Values.grafanaCloud.username }}"
-                  password = "{{ .Values.grafanaCloud.prometheusPassword }}"
+                  username = "1567196"
+                  password = env("GRAFANA_CLOUD_TOKEN")
                 }
               }
             }
@@ -170,40 +104,39 @@ releases:
 
             loki.write "grafana_cloud" {
               endpoint {
-                url = "{{ .Values.grafanaCloud.lokiUrl }}"
+                url = "https://logs-prod-028.grafana.net/loki/api/v1/push"
                 basic_auth {
-                  username = "{{ .Values.grafanaCloud.username }}"
-                  password = "{{ .Values.grafanaCloud.lokiPassword }}"
+                  username = "1567196"
+                  password = env("GRAFANA_CLOUD_TOKEN")
                 }
               }
             }
 
-            // Traces Collection (optional)
-            {{- if and .Values.grafanaCloud.tempoUrl (ne .Values.grafanaCloud.tempoUrl "") }}
-            otelcol.receiver.otlp "default" {
+            // Traces Collection via OTLP
+            otelcol.receiver.otlp "otlp_receiver" {
               grpc {
                 endpoint = "0.0.0.0:4317"
               }
               http {
                 endpoint = "0.0.0.0:4318"
               }
+
               output {
-                traces = [otelcol.exporter.otlp.grafana_cloud.input]
+                traces = [otelcol.exporter.otlp.grafanacloud.input]
               }
             }
 
-            otelcol.exporter.otlp "grafana_cloud" {
+            otelcol.exporter.otlp "grafanacloud" {
               client {
-                endpoint = "{{ .Values.grafanaCloud.tempoUrl }}"
-                auth = otelcol.auth.basic.grafana_cloud.handler
+                endpoint = "tempo-prod-19-prod-ap-south-1.grafana.net:443"
+                auth = otelcol.auth.basic.grafanacloud.handler
               }
             }
 
-            otelcol.auth.basic "grafana_cloud" {
-              username = "{{ .Values.grafanaCloud.username }}"
-              password = "{{ .Values.grafanaCloud.tempoPassword }}"
+            otelcol.auth.basic "grafanacloud" {
+              username = "1561497"
+              password = env("GRAFANA_CLOUD_TOKEN")
             }
-            {{- end }}
 
         rbac:
           create: true
@@ -226,3 +159,26 @@ releases:
           limits:
             cpu: 500m
             memory: 512Mi
+        env:
+          - name: GRAFANA_CLOUD_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: grafana-cloud-credentials
+                key: token
+
+  # Kubernetes Secret with Grafana Cloud credentials from Vault
+  - name: grafana-cloud-secret
+    namespace: monitoring
+    forceNamespace: monitoring
+    chart: "git::https://github.com/531001/helm-charts.git@raw?ref=main"
+    values:
+      - resources:
+          - apiVersion: v1
+            kind: Secret
+            metadata:
+              name: grafana-cloud-credentials
+              namespace: monitoring
+            type: Opaque
+            stringData:
+              # Token from: secret/metadata/gitops/dev/grafana-cloud
+              token: "{{ env "GRAFANA_CLOUD_TOKEN" | default "changeme" }}"

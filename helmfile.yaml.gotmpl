@@ -26,6 +26,8 @@ repositories:
 #   GRAFANA_CLOUD_LOKI_USER    - Grafana Cloud Loki username
 #   GRAFANA_CLOUD_TEMPO_URL    - Grafana Cloud Tempo endpoint
 #   GRAFANA_CLOUD_TEMPO_USER   - Grafana Cloud Tempo username
+#   STORAGE_CLASS              - Storage class for persistent volumes (default: local-storage)
+#   PROVIDER                   - Cloud provider (local|aws|gcp|azure|do, default: local)
 
 environments:
   default:
@@ -33,6 +35,8 @@ environments:
       - clusterName: {{ env "CLUSTER_NAME" | default "default" }}
         domain: {{ env "CLUSTER_DOMAIN" | default "example.com" }}
         environment: {{ env "CLUSTER_NAME" | default "default" }}
+        provider: {{ env "PROVIDER" | default "local" }}
+        storageClass: {{ env "STORAGE_CLASS" | default "local-storage" }}
         argocd:
           adminpasswordhashed: {{ env "ARGOCD_ADMIN_PASSWORD_HASH" | default "$2a$10$R9h7cIPooruNMMwq.L7KqOOtV27x8BwwfHuPVnKfKWGz/BnQuZ8eC" }}
         cloudflare:
@@ -58,6 +62,10 @@ environments:
 ---
 helmfiles:
   - path: releases/namespaces.yaml.gotmpl
+    inherits: [repositories]
+    values:
+      - {{ .Values | toYaml | nindent 8 }}
+  - path: releases/storage.yaml.gotmpl
     inherits: [repositories]
     values:
       - {{ .Values | toYaml | nindent 8 }}

@@ -1,5 +1,142 @@
 ---
 releases:
+  # Alloy Configuration ConfigMap (created first to avoid volume mount issues)
+  - name: alloy-config-map
+    namespace: monitoring
+    forceNamespace: monitoring
+    chart: "git::https://github.com/531001/helm-charts.git@raw?ref=main"
+    values:
+      - resources:
+          - apiVersion: v1
+            kind: ConfigMap
+            metadata:
+              name: alloy-config
+              namespace: monitoring
+            data:
+              config.alloy: |
+                logging {
+                  level  = "info"
+                  format = "json"
+                }
+
+                discovery.kubernetes "nodes" {
+                  role = "node"
+                }
+
+                discovery.kubernetes "services" {
+                  role = "service"
+                }
+
+                discovery.kubernetes "endpoints" {
+                  role = "endpoints"
+                }
+
+                discovery.kubernetes "pods" {
+                  role = "pod"
+                }
+
+                // Prometheus Metrics Collection
+                prometheus.scrape "kubernetes_pods" {
+                  targets = discovery.kubernetes.pods.targets
+                  job_name = "kubernetes-pods"
+                  scrape_interval = "30s"
+                  scrape_timeout = "10s"
+
+                  metric_relabel "drop_high_cardinality" {
+                    action = "drop"
+                    source_labels = ["__name__"]
+                    regex = "kubelet_volume_stats_used_bytes|kubelet_volume_stats_capacity_bytes"
+                  }
+                }
+
+                prometheus.scrape "kubernetes_nodes" {
+                  targets = discovery.kubernetes.nodes.targets
+                  job_name = "kubernetes-nodes"
+                  scrape_interval = "30s"
+                  scrape_timeout = "10s"
+                  bearer_token_file = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+                  tls_config {
+                    ca_file = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+                  }
+                }
+
+                prometheus.scrape "kubernetes_services" {
+                  targets = discovery.kubernetes.services.targets
+                  job_name = "kubernetes-services"
+                  scrape_interval = "30s"
+                  scrape_timeout = "10s"
+                }
+
+                // Add cluster name label to all metrics
+                prometheus.relabel "add_cluster_label" {
+                  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+                  metric_relabel {
+                    action = "replace"
+                    target_label = "cluster"
+                    replacement = "{{ .Values.clusterName | default "default" }}"
+                  }
+                }
+
+                // Forward metrics to Grafana Cloud
+                prometheus.remote_write "grafana_cloud" {
+                  endpoint {
+                    url = "{{ .Values.grafanaCloud.prometheus.url }}"
+                    basic_auth {
+                      username = "{{ .Values.grafanaCloud.prometheus.username }}"
+                      password = env("GRAFANA_CLOUD_TOKEN")
+                    }
+                  }
+                }
+
+                // Logs Collection
+                loki.source.kubernetes "pod_logs" {
+                  targets = discovery.kubernetes.pods.targets
+                  forward_to = [loki.process.logs.receiver]
+                }
+
+                loki.process "logs" {
+                  stage.label_drop {
+                    values = ["__meta_kubernetes_pod_label_app_kubernetes_io_version", "__meta_kubernetes_pod_label_app_kubernetes_io_part_of"]
+                  }
+                  forward_to = [loki.write.grafana_cloud.receiver]
+                }
+
+                loki.write "grafana_cloud" {
+                  endpoint {
+                    url = "{{ .Values.grafanaCloud.loki.url }}"
+                    basic_auth {
+                      username = "{{ .Values.grafanaCloud.loki.username }}"
+                      password = env("GRAFANA_CLOUD_TOKEN")
+                    }
+                  }
+                }
+
+                // Traces Collection via OTLP
+                otelcol.receiver.otlp "otlp_receiver" {
+                  grpc {
+                    endpoint = "0.0.0.0:4317"
+                  }
+                  http {
+                    endpoint = "0.0.0.0:4318"
+                  }
+
+                  output {
+                    traces = [otelcol.exporter.otlp.grafanacloud.input]
+                  }
+                }
+
+                otelcol.exporter.otlp "grafanacloud" {
+                  client {
+                    endpoint = "{{ .Values.grafanaCloud.tempo.url }}"
+                    auth = otelcol.auth.basic.grafanacloud.handler
+                  }
+                }
+
+                otelcol.auth.basic "grafanacloud" {
+                  username = "{{ .Values.grafanaCloud.tempo.username }}"
+                  password = env("GRAFANA_CLOUD_TOKEN")
+                }
+
   # Grafana Cloud Alloy Agent
   # Collects all metrics, logs, and traces from the cluster and sends to Grafana Cloud
   - name: grafana-alloy
@@ -7,136 +144,15 @@ releases:
     forceNamespace: monitoring
     chart: grafana/alloy
     version: 0.3.1
+    needs:
+      - monitoring/alloy-config-map
     values:
       - alloy:
           stability: experimental
           loglevel: info
           configMap:
-            create: true
+            create: false
             name: alloy-config
-          config: |
-            logging {
-              level  = "info"
-              format = "json"
-            }
-
-            discovery.kubernetes "nodes" {
-              role = "node"
-            }
-
-            discovery.kubernetes "services" {
-              role = "service"
-            }
-
-            discovery.kubernetes "endpoints" {
-              role = "endpoints"
-            }
-
-            discovery.kubernetes "pods" {
-              role = "pod"
-            }
-
-            // Prometheus Metrics Collection
-            prometheus.scrape "kubernetes_pods" {
-              targets = discovery.kubernetes.pods.targets
-              job_name = "kubernetes-pods"
-              scrape_interval = "30s"
-              scrape_timeout = "10s"
-
-              metric_relabel "drop_high_cardinality" {
-                action = "drop"
-                source_labels = ["__name__"]
-                regex = "kubelet_volume_stats_used_bytes|kubelet_volume_stats_capacity_bytes"
-              }
-            }
-
-            prometheus.scrape "kubernetes_nodes" {
-              targets = discovery.kubernetes.nodes.targets
-              job_name = "kubernetes-nodes"
-              scrape_interval = "30s"
-              scrape_timeout = "10s"
-              bearer_token_file = "/var/run/secrets/kubernetes.io/serviceaccount/token"
-              tls_config {
-                ca_file = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
-              }
-            }
-
-            prometheus.scrape "kubernetes_services" {
-              targets = discovery.kubernetes.services.targets
-              job_name = "kubernetes-services"
-              scrape_interval = "30s"
-              scrape_timeout = "10s"
-            }
-
-            // Add cluster name label to all metrics
-            prometheus.relabel "add_cluster_label" {
-              forward_to = [prometheus.remote_write.grafana_cloud.receiver]
-              metric_relabel {
-                action = "replace"
-                target_label = "cluster"
-                replacement = "{{ .Values.clusterName | default "default" }}"
-              }
-            }
-
-            // Forward metrics to Grafana Cloud
-            prometheus.remote_write "grafana_cloud" {
-              endpoint {
-                url = "{{ .Values.grafanaCloud.prometheus.url }}"
-                basic_auth {
-                  username = "{{ .Values.grafanaCloud.prometheus.username }}"
-                  password = env("GRAFANA_CLOUD_TOKEN")
-                }
-              }
-            }
-
-            // Logs Collection
-            loki.source.kubernetes "pod_logs" {
-              targets = discovery.kubernetes.pods.targets
-              forward_to = [loki.process.logs.receiver]
-            }
-
-            loki.process "logs" {
-              stage.label_drop {
-                values = ["__meta_kubernetes_pod_label_app_kubernetes_io_version", "__meta_kubernetes_pod_label_app_kubernetes_io_part_of"]
-              }
-              forward_to = [loki.write.grafana_cloud.receiver]
-            }
-
-            loki.write "grafana_cloud" {
-              endpoint {
-                url = "{{ .Values.grafanaCloud.loki.url }}"
-                basic_auth {
-                  username = "{{ .Values.grafanaCloud.loki.username }}"
-                  password = env("GRAFANA_CLOUD_TOKEN")
-                }
-              }
-            }
-
-            // Traces Collection via OTLP
-            otelcol.receiver.otlp "otlp_receiver" {
-              grpc {
-                endpoint = "0.0.0.0:4317"
-              }
-              http {
-                endpoint = "0.0.0.0:4318"
-              }
-
-              output {
-                traces = [otelcol.exporter.otlp.grafanacloud.input]
-              }
-            }
-
-            otelcol.exporter.otlp "grafanacloud" {
-              client {
-                endpoint = "{{ .Values.grafanaCloud.tempo.url }}"
-                auth = otelcol.auth.basic.grafanacloud.handler
-              }
-            }
-
-            otelcol.auth.basic "grafanacloud" {
-              username = "{{ .Values.grafanaCloud.tempo.username }}"
-              password = env("GRAFANA_CLOUD_TOKEN")
-            }
 
         rbac:
           create: true

@@ -1,0 +1,101 @@
+---
+# Storage configuration for local and cloud providers
+# Defines StorageClasses for different infrastructure environments
+#
+# Default: local-storage (for kind, minikube, docker-desktop)
+# Override with STORAGE_CLASS environment variable for other providers
+
+releases:
+  # Storage Classes for different cloud providers and local environments
+  - name: storage-classes
+    namespace: kube-system
+    chart: "git::https://github.com/531001/helm-charts.git@raw?ref=main"
+    values:
+      - resources:
+          # Local storage class for development/testing (kind, minikube, docker-desktop)
+          - apiVersion: storage.k8s.io/v1
+            kind: StorageClass
+            metadata:
+              name: local-storage
+              annotations:
+                storageclass.kubernetes.io/is-default-class: "true"
+            provisioner: kubernetes.io/no-provisioner
+            volumeBindingMode: WaitForFirstConsumer
+
+          # AWS EBS storage class (gp3 recommended for EKS)
+          - apiVersion: storage.k8s.io/v1
+            kind: StorageClass
+            metadata:
+              name: ebs-gp3
+              annotations:
+                storageclass.kubernetes.io/is-default-class: "false"
+            provisioner: ebs.csi.aws.com
+            parameters:
+              type: gp3
+              iops: "3000"
+              throughput: "125"
+              deleteOnTermination: "true"
+            allowVolumeExpansion: true
+            reclaimPolicy: Delete
+
+          # Google Cloud Persistent Disk (GKE)
+          - apiVersion: storage.k8s.io/v1
+            kind: StorageClass
+            metadata:
+              name: gce-pd-ssd
+              annotations:
+                storageclass.kubernetes.io/is-default-class: "false"
+            provisioner: pd.csi.storage.gke.io
+            parameters:
+              type: pd-ssd
+              replication-type: regional-pd
+            allowVolumeExpansion: true
+            reclaimPolicy: Delete
+
+          # Azure Managed Disk (AKS)
+          - apiVersion: storage.k8s.io/v1
+            kind: StorageClass
+            metadata:
+              name: azure-managed-disk
+              annotations:
+                storageclass.kubernetes.io/is-default-class: "false"
+            provisioner: disk.csi.azure.com
+            parameters:
+              skuname: Premium_LRS
+            allowVolumeExpansion: true
+            reclaimPolicy: Delete
+
+          # DigitalOcean Block Storage (DOKS)
+          - apiVersion: storage.k8s.io/v1
+            kind: StorageClass
+            metadata:
+              name: do-block-storage
+              annotations:
+                storageclass.kubernetes.io/is-default-class: "false"
+            provisioner: dobs.csi.digitalocean.com
+            allowVolumeExpansion: true
+            reclaimPolicy: Delete
+
+          # Linode Block Storage (LKE)
+          - apiVersion: storage.k8s.io/v1
+            kind: StorageClass
+            metadata:
+              name: linode-block-storage
+              annotations:
+                storageclass.kubernetes.io/is-default-class: "false"
+            provisioner: linodebs.csi.linode.com
+            parameters:
+              type: linode/ssd
+            allowVolumeExpansion: true
+            reclaimPolicy: Delete
+
+          # Hetzner Cloud (Hetzner)
+          - apiVersion: storage.k8s.io/v1
+            kind: StorageClass
+            metadata:
+              name: hcloud-volumes
+              annotations:
+                storageclass.kubernetes.io/is-default-class: "false"
+            provisioner: csi.hetzner.cloud
+            allowVolumeExpansion: true
+            reclaimPolicy: Delete

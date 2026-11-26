@@ -27,15 +27,13 @@ This is a reusable module — set environment variables and deploy to any Kubern
 
 ```bash
 # Set cluster configuration
-export CLUSTER_NAME="dev"                    # Cluster identifier
-export CLUSTER_DOMAIN="example.com"          # Domain for services
-export CLOUDFLARED_REPLICAS="1"              # (optional, default: 1)
+export CLUSTER_NAME="dev"                              # Cluster identifier
+export CLUSTER_DOMAIN="example.com"                    # Domain for services
 
-# Set secrets
-export GITHUB_TOKEN="ghp_xxxx..."            # GitHub PAT
-export CLOUDFLARE_TOKEN="xxxx..."            # Cloudflare API token
-export CLOUDFLARE_ACCOUNT_ID="xxxx..."       # Cloudflare account ID
-export ARGOCD_ADMIN_PASSWORD_HASH="$2a$10$..." # bcrypt hash
+# Set required secrets
+export CLOUDFLARE_TOKEN="xxxx..."                      # Cloudflare API token
+export CLOUDFLARE_ACCOUNT_ID="xxxx..."                 # Cloudflare account ID
+export ARGOCD_ADMIN_PASSWORD_HASH="$2a$10$..."         # bcrypt hash
 
 # Set Grafana Cloud configuration (environment-specific)
 export GRAFANA_CLOUD_TOKEN="xxx"
@@ -45,6 +43,9 @@ export GRAFANA_CLOUD_LOKI_URL="https://logs-prod-028.grafana.net/loki/api/v1/pus
 export GRAFANA_CLOUD_LOKI_USER="123456"
 export GRAFANA_CLOUD_TEMPO_URL="tempo-prod-19-prod-ap-south-1.grafana.net:443"
 export GRAFANA_CLOUD_TEMPO_USER="123456"
+
+# Optional
+export CLOUDFLARED_REPLICAS="1"                        # (default: 1)
 
 # Preview
 helmfile template | head -100
@@ -58,6 +59,12 @@ helmfile sync
 Same code, different environments. Just override variables:
 
 ```bash
+# Shared secrets
+export CLOUDFLARE_TOKEN="xxx"
+export CLOUDFLARE_ACCOUNT_ID="xxx"
+export ARGOCD_ADMIN_PASSWORD_HASH="$2a$10$..."
+export GRAFANA_CLOUD_TOKEN="xxx"
+
 # Dev
 export CLUSTER_NAME="dev" CLUSTER_DOMAIN="dev.example.com" CLOUDFLARED_REPLICAS="1"
 export GRAFANA_CLOUD_PROM_URL="..." GRAFANA_CLOUD_PROM_USER="..." # dev Grafana
@@ -169,7 +176,6 @@ Creates required namespaces:
 |----------|----------|---------|
 | `CLUSTER_NAME` | ✓ | Unique cluster ID (dev, staging, prod) |
 | `CLUSTER_DOMAIN` | ✓ | Domain for services |
-| `GITHUB_TOKEN` | ✓ | GitHub personal access token |
 | `CLOUDFLARE_TOKEN` | ✓ | Cloudflare API token |
 | `CLOUDFLARE_ACCOUNT_ID` | ✓ | Cloudflare account ID |
 | `ARGOCD_ADMIN_PASSWORD_HASH` | ✓ | bcrypt hash of ArgoCD password |

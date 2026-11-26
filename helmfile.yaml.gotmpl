@@ -13,7 +13,6 @@ repositories:
 # Required environment variables:
 #   CLUSTER_NAME           - Unique cluster identifier (dev, staging, prod, etc)
 #   CLUSTER_DOMAIN         - Domain for cluster services (e.g., example.com)
-#   GITHUB_TOKEN           - GitHub personal access token for private gitops repository
 #   CLOUDFLARE_TOKEN       - Cloudflare API token for DNS and tunnel
 #   CLOUDFLARE_ACCOUNT_ID  - Cloudflare account ID
 #   ARGOCD_ADMIN_PASSWORD_HASH - bcrypt hash of ArgoCD admin password
@@ -36,8 +35,6 @@ environments:
         environment: {{ env "CLUSTER_NAME" | default "default" }}
         argocd:
           adminpasswordhashed: {{ env "ARGOCD_ADMIN_PASSWORD_HASH" | default "$2a$10$R9h7cIPooruNMMwq.L7KqOOtV27x8BwwfHuPVnKfKWGz/BnQuZ8eC" }}
-        github:
-          accesstoken: {{ env "GITHUB_TOKEN" | default "changeme" }}
         cloudflare:
           apitoken: {{ env "CLOUDFLARE_TOKEN" | default "changeme" }}
           accountid: {{ env "CLOUDFLARE_ACCOUNT_ID" | default "changeme" }}

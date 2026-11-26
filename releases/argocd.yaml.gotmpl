@@ -22,8 +22,6 @@ releases:
               name: gitops-{{ .Values.clusterName }}
               project: default
               type: git
-              username: git
-              password: {{ .Values.github.accesstoken }}
             - url: https://github.com/531001/helm-charts.git
               name: helm-charts
               project: default
@@ -63,8 +61,6 @@ releases:
                   value: {{ requiredEnv "VAULT_ADDR" | quote }}
                 - name: VAULT_TOKEN
                   value: {{ requiredEnv "VAULT_TOKEN" | quote }}
-                - name: GITHUB_TOKEN
-                  value: {{ .Values.github.accesstoken }}
                 - name: HELMFILE_CACHE_CLEANUP
                   value: "true"
               volumeMounts:
